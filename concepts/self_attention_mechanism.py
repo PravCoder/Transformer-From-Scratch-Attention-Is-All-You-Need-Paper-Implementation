@@ -29,8 +29,13 @@ class SelfAttentionHead:
         self.W_q = np.random.randn(self.d_model, self.d_k) / np.sqrt(d_model)   
         self.W_k = np.random.randn(self.d_model, self.d_k) / np.sqrt(d_model)
         self.W_v = np.random.randn(self.d_model, self.d_k) / np.sqrt(d_model)
-
-    # X: (batch, seq_len, d_model)
+    """
+    Arguments:
+        X: (batch, seq_len, d_model), just implementing the equations below
+    Output: 
+        Z: head-output-weighted-sum-of-values, shape: (batch, seq_len, seq_len)
+        attention_weights_alpha: attention-weights-alpha the softmax equation, shape: (batch, seq_len, d_v)
+    """
     def forward(self, X):
         
         # compute matrix of queries. Row Q_i is query vector for word i. ∈ ℝ^(n × d_k) with batch dim
@@ -49,23 +54,25 @@ class SelfAttentionHead:
         # compute attention/similarity scores plus scaling, shape: (batch, seq_len, seq_len) = (batch, n, n)
         # right now K is (batch, seq_len, d_k). But we need it in shape (batch, d_k, seq_len) thats why we do the transpose so we can do:
         attention_scores =  np.matmul(Q, K.transpose(0, 2, 1)) / math.sqrt(self.d_k)
-        
-
-        # add softmax along last axis (seq_len), every element is attention weight vector for ith word query, shape: (batch, seq_len, seq_len)
-        weights_alpha = self.softmax(attention_scores)
-        
-
-        # weighted sum of values, each element is a new presentation of word i, it looks at entire sequence when we computed z_i for all words, that means each word looks at all words including itself. 
-        # shape: (batch, seq_len, d_v)
-        z = np.matmul(weights_alpha, V)
-
         print(f"{attention_scores.shape=}")
-        print(f"{weights_alpha.shape=}")
-        print(f"{z.shape=}")
+        
 
+        # this is attention weights: add softmax along last axis (seq_len), every element is attention weight vector for ith word query, shape: (batch, seq_len, seq_len)
+        attention_weights_alpha = self.softmax(attention_scores)
+        
+
+        # this is weighted-sum of values: each element is a new presentation of word i, it looks at entire sequence when we computed z_i for all words, that means each word looks at all words including itself. look at notes
+        # shape: (batch, seq_len, d_v)
         # each element is a vector that represents the token after attending to the entire sequence (including itself). It’s a weighted sum of all value vectors, where the weights come from the attention scores.
         # zi​ = summation from j=1 to n of (alpha_ij * V_j)
-        return z
+        z = np.matmul(attention_weights_alpha, V)
+
+        print("---outputs---")
+        print(f"{attention_weights_alpha.shape=}")
+        print(f"{z.shape=}")
+
+        
+        return z, attention_weights_alpha
 
     def softmax(self, x):
         e_x = np.exp(x - np.max(x))
