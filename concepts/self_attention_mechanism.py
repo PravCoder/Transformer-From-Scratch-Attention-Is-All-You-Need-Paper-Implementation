@@ -6,14 +6,16 @@ import math
 
 """
 Methods:
-    forward(): 
+    forward(): given batch of input sequence embeddings (one embedding per token, per row), it does scaled dot product attention 
+               outputing weighted sum of values which is for each word its new presentation after looking at every other word including itself.
+               for each token, a new representation (context vector) that encodes information from all tokens in the sequence, including itself.
 Attributes:
     d_model: input embedding size
     d_k: dimensionality of key-vector for ith token, in the paper d_k = d_v = d_model / num-heads so = d_model
     d_v: dimensionality of value-vector for ith token 
-    W_q: ∈ ℝ^(d_model × d_k), learned projection matrix that maps input embeddings into queries
-    W_k: ∈ ℝ^(d_model × d_k), learned projection matrix that maps input embeddings into keys
-    W_v: ∈ ℝ^(d_model × d_k), learned projection matrix that maps input embeddings into values
+    W_q: ∈ ℝ^(d_model × d_k), learned projection weights matrix that maps input embeddings into queries in xW_q = Q
+    W_k: ∈ ℝ^(d_model × d_k), learned projection weights matrix that maps input embeddings into keys in xW_k =K
+    W_v: ∈ ℝ^(d_model × d_k), learned projection weights matrix that maps input embeddings into values xW_v = V
 """
 class SelfAttentionHead:
 
@@ -60,6 +62,9 @@ class SelfAttentionHead:
         print(f"{attention_scores.shape=}")
         print(f"{weights_alpha.shape=}")
         print(f"{z.shape=}")
+
+        # each element is a vector that represents the token after attending to the entire sequence (including itself). It’s a weighted sum of all value vectors, where the weights come from the attention scores.
+        # zi​ = summation from j=1 to n of (alpha_ij * V_j)
         return z
 
     def softmax(self, x):
