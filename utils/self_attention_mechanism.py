@@ -1,6 +1,7 @@
 import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 """
@@ -43,6 +44,7 @@ class SelfAttentionHead(nn.Module):
         attention_weights: (batch, seq_len, seq_len), the attention weights after sclaing + softmax
     """
     def forward(self, X, mask=None):
+        # compute projection representations
         # calling forward pass of linear-layer-W_q passing in input X, (B, N, d_model) * (d_model, d_k) = (B, N, d_k), where Qi is query-vector for ith token
         Q = self.W_q(X) 
         # calling forward pass of linear-layer-W_k passing in input X, (B, N, d_model) * (d_model, d_k) = (B, N, d_k), where Ki is key-vector for ith token
@@ -53,6 +55,29 @@ class SelfAttentionHead(nn.Module):
         print(f"Q: {Q.shape}")
         print(f"K: {K.shape}")
         print(f"V: {V.shape}")
+
+        # scaled dot product attention scores: QK^T / √d_k
+        # K.transpose(-2, -1) swaps the last two dimensions from (B, N, d_k) -> (B, d_k, N)
+        scaled_scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(Q.size(-1))
+    
+        # apply mask
+        if mask is not None:
+            scaled_scores = scaled_scores.masked_fill(~mask, float("-inf"))
+
+        # apply softmax to scaled-scores, shape (B, N, N)
+        attention_weights_alpha = F.softmax(scaled_scores, dim=-1)
+        # passing atten-scores as input into dropout layer
+        attention_weights_alpha = self.dropout(attention_weights_alpha)
+
+        # compute weighted sum of values (head output), z = alpha * V, shaoe (B, N, d_v/d_k)
+        z = torch.matmul(attention_weights_alpha, V)
+
+
+        print(f"\nz: {z.shape}")                                                
+        print(f"attention_weights_alpha: {attention_weights_alpha.shape}")
+
+        return z, attention_weights_alpha        # return head output & attention weights
+        
 
 
 def main():
@@ -65,7 +90,6 @@ def main():
     head = SelfAttentionHead(d_model=d_model, d_k=d_k, d_v=d_k, dropout=0.1)  
 
     print("==========FORWARD PASS OF HEAD==========")
-    
     # this does forward-pass because we inheriting from torch
     # expected: (2, 5, 8) for Q, K, V shapes      
     head(X)         
