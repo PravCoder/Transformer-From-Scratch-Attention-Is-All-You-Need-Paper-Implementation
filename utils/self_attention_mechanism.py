@@ -97,6 +97,7 @@ def test_with_real_embeddings(B=2, N=5, d_model=16, d_k=8, d_v=8, dropout=0.1, v
     # shape: (B, N, d_model)
     # x[0][5] = get the first sequence 5th token embedding vector of size d_model
     x_real = emb(x_ids)
+    print(f"x_real: {x_real.shape}")
 
 
     head = SelfAttentionHead(d_model=d_model, d_k=d_k, d_v=d_k, dropout=0.1)  
@@ -104,12 +105,26 @@ def test_with_real_embeddings(B=2, N=5, d_model=16, d_k=8, d_v=8, dropout=0.1, v
     # expected shape attention_weights: (2, 5, 5)
     z, attention_weights = head(x_real)
 
-    return z, attention_weights
+    
+    return z, attention_weights, head, emb
     
 
-def check_backprop():
-    # sanity gradient checks
-    pass
+def check_backprop(head, emb, z):   # sanity gradient checks, attach simple dummy loss to confirm gradients flow
+    target = torch.randn_like(z)    # dummy target same shape as z
+
+    criterion = nn.MSELoss()
+    loss = criterion(z, target)
+
+    loss.backward()
+
+    print("Grad for embedding table:", emb.weight.grad is not None)
+    print("Grad for W_q:", head.W_q.weight.grad is not None)
+    print("Grad for W_k:", head.W_k.weight.grad is not None)
+    print("Grad for W_v:", head.W_v.weight.grad is not None)
+
+    print(head.W_q.weight.grad.norm())  # to check non zero
+    print(head.W_k.weight.grad.norm())
+    print(head.W_v.weight.grad.norm())
 
 def main():
     B, N, d_model, d_k = 2, 5, 16, 8    # B=batch-size, N=seq-len, d_model=input-embed-dim, d_k=key-vec-dim
@@ -117,10 +132,12 @@ def main():
 
     # create input embeddings (batch, seq_len, d_model), sample random
     X = torch.randn(B, N, d_model)
+    print(f"X: {X.shape}")
     # create self-attention-head
     head = SelfAttentionHead(d_model=d_model, d_k=d_k, d_v=d_k, dropout=0.1)  
 
     print("==========FORWARD PASS OF HEAD - SAMPLE EMBEDDINGS==========")
+    print(f"X: {X.shape}")
     # this does forward-pass because we inheriting from torch
     # expected: (2, 5, 8) for Q, K, V shapes      
     head(X)         
@@ -129,8 +146,10 @@ def main():
     print("\n==========REAL EMBEDDINGS: SINGLE-SELF-ATTENTION-HEAD FORWARD PASS==========")
     # expected shape z: (2, 5, 8)
     # expected shape attention_weights: (2, 5, 5)
-    test_with_real_embeddings(B=2, N=5, d_model=16, d_k=8, d_v=8, dropout=0.1, vocab_size=50)
+    z, attention_weights, head, emb = test_with_real_embeddings(B=2, N=5, d_model=16, d_k=8, d_v=8, dropout=0.1, vocab_size=50)
 
+    print("\n==========CHECK BACKPROP OF HEAD==========")
+    check_backprop(head, emb, z)
     
 
 if __name__ == "__main__":
