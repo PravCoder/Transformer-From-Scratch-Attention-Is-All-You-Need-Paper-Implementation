@@ -79,21 +79,57 @@ class SelfAttentionHead(nn.Module):
         return z, attention_weights_alpha        # return head output & attention weights
         
 
+def test_with_real_embeddings(B=2, N=5, d_model=16, d_k=8, d_v=8, dropout=0.1, vocab_size=50):
+    print(f"{B=}, {N=}, {d_model=}, {d_k=}, {vocab_size=}")
+
+    # creates an embedding look up table of shape (vocab_size, d_model), each row corresponds to the vector representation of one token-ID
+    emb = nn.Embedding(vocab_size, d_model)
+    # generates a batch of random token IDs of shape (B, N) = (batch_size, seq_len) = (number_of_sequences, seq_len).
+    # each sequence has 5 token ids cause N=5=seq_len
+    # each entry is an integer between and vocabsize-1
+    # x_ids[0] -> first sequence [17, 42, 3, 11, 29]
+    # x_ids[1] -> second sequence [8, 0, 14, 21, 7]
+    # x_ids[1, 4] -> 5th token-id in 2nd sequence = 7, equal to single token-id-integer
+    x_ids = torch.randint(0, vocab_size, (B,N))
+
+    # uses embedding layer as a lookup
+    # each token-id-integer in x_ids is replaced by its corresponding row from the embedding matrix
+    # shape: (B, N, d_model)
+    # x[0][5] = get the first sequence 5th token embedding vector of size d_model
+    x_real = emb(x_ids)
+
+
+    head = SelfAttentionHead(d_model=d_model, d_k=d_k, d_v=d_k, dropout=0.1)  
+    # expected shape z: (2, 5, 8)
+    # expected shape attention_weights: (2, 5, 5)
+    z, attention_weights = head(x_real)
+
+    return z, attention_weights
+    
+
+def check_backprop():
+    # sanity gradient checks
+    pass
 
 def main():
     B, N, d_model, d_k = 2, 5, 16, 8    # B=batch-size, N=seq-len, d_model=input-embed-dim, d_k=key-vec-dim
     print(f"{B=}, {N=}, {d_model=}, {d_k=}")
 
-    # create input embeddings (batch, seq_len, d_model) 
+    # create input embeddings (batch, seq_len, d_model), sample random
     X = torch.randn(B, N, d_model)
     # create self-attention-head
     head = SelfAttentionHead(d_model=d_model, d_k=d_k, d_v=d_k, dropout=0.1)  
 
-    print("==========FORWARD PASS OF HEAD==========")
+    print("==========FORWARD PASS OF HEAD - SAMPLE EMBEDDINGS==========")
     # this does forward-pass because we inheriting from torch
     # expected: (2, 5, 8) for Q, K, V shapes      
     head(X)         
-    
+
+
+    print("\n==========REAL EMBEDDINGS: SINGLE-SELF-ATTENTION-HEAD FORWARD PASS==========")
+    # expected shape z: (2, 5, 8)
+    # expected shape attention_weights: (2, 5, 5)
+    test_with_real_embeddings(B=2, N=5, d_model=16, d_k=8, d_v=8, dropout=0.1, vocab_size=50)
 
     
 
