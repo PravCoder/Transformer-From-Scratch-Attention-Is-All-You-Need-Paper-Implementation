@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 """
 Methods:
-    forward():
+    forward(): computes forward pass of single head
 Attributes:
     d_model: input embedding dimension for a token
     d_k: dimension of keys, dim of key vector for ith word, we will use it for queries also
@@ -15,7 +15,6 @@ Attributes:
     W_q: ∈ ℝ^(d_model × d_k), learned projection weights matrix that maps input embeddings into queries in xW_q = Q
     W_k: ∈ ℝ^(d_model × d_k), learned projection weights matrix that maps input embeddings into keys in xW_k =K
     W_v: ∈ ℝ^(d_model × d_k), learned projection weights matrix that maps input embeddings into values xW_v = V
-
 """
 class SelfAttentionHead(nn.Module):
 
@@ -69,7 +68,7 @@ class SelfAttentionHead(nn.Module):
         # passing atten-scores as input into dropout layer
         attention_weights_alpha = self.dropout(attention_weights_alpha)
 
-        # compute weighted sum of values (head output), z = alpha * V, shaoe (B, N, d_v/d_k)
+        # compute weighted sum of values (head output), z = alpha * V, shape (B, N, d_v/d_k)
         z = torch.matmul(attention_weights_alpha, V)
 
 
