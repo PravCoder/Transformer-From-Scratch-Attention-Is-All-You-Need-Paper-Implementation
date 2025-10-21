@@ -42,7 +42,8 @@ class MultiHeadAttention(nn.Module):
     Arguments:
         X: (batch, seq_len, d_model), input embeddings (number of sequences, length of sequence, embedding dimension for a token), N=seq_len.
     Returns:
-        
+        out: (B, N, d_model), new contextualized representation for each token.
+        alpha: (B, H, N, N), attention weights for each head.
     """
     def forward(self, X, print_info=False):
         B, N, _ = X.shape
@@ -74,20 +75,45 @@ class MultiHeadAttention(nn.Module):
         Z = Z.transpose(1, 2).contiguous().view(B, N, self.heads * self.d_v)
 
         # compute final output projection, Z*W_o
-        # Z*W_o[b, n, :] = gets teh new repsentationvector of bth sequence of nth token
+        # Z*W_o[b, n, :] = gets the new repsentation-vector of bth sequence of nth token
         out = self.W_o(Z)
 
-        # 
+        
         if print_info == True:
             print(f"{out.shape=}")
             print(f"{alpha.shape=}")
 
         return out, alpha
 
+def test_with_real_embeddings(B=10, N=20, d_model=16, d_k=8, d_v=8, heads=3, dropout=0.1, vocab_size=50):
+    print(f"{B=}, {N=}, {d_model=}, {d_k=}, {d_v=} {vocab_size=}")
+
+    # creates an embedding look up table of shape (vocab_size, d_model), each row corresponds to the vector representation of one token-ID
+    emb = nn.Embedding(vocab_size, d_model)
+
+    # generates a batch of random token IDs of shape (B, N) = (number of sequnces, seq_len)
+    # each sequence has 20 token ids cause N=20=seq_len
+    # each entry is an integer between 0 and vocab_size-1
+    # x_ids[0] -> first sequence [24, 5, 6,..., 8, 17], where each number is a token-ID representing a token in this sequence
+    # x_ids[1] -> second sequence [4, 9, 12,...., 15, 6]
+    # x_ids[1, 2] -> 3rd token-id in 2nd sequence = 12, equal to single token-id-integer
+    x_ids = torch.randint(0, vocab_size, (B, N))
+
+    # uses embedding layer as lookup
+    # each token-ID-int in x-ids is replaced by its corresponding row from the embedding matrix
+    # shape: (B, N, d_model)
+    # x_real[0][5] = get the first seqence 5th token embedding vector of size d_model
+    x_real = emb(x_ids)
+    print(f"x_real: {x_real.shape}")
+
+    mha = MultiHeadAttention(d_model=d_model, d_k=d_k, d_v=d_v, heads=heads)
+    out, attention_weights = mha(x_real)
+
+    return out, attention_weights, mha, emb
 
 def main():
     B, N, d_model, d_k, d_v, heads = 2, 5, 16, 8, 8, 2  # B=batch-size, N=seq-len, d_model=input-embed-dim, d_k=key-vec-dim, hea
-    print(f"{B=}, {N=}, {d_model=}, {d_k=}, {d_v=}, {heads=}")
+    print(f"\n{B=}, {N=}, {d_model=}, {d_k=}, {d_v=}, {heads=}")
     X = torch.randn(B, N, d_model)
 
     print("==========CREATE MULTI-HEAD OBJECT==========")
@@ -98,10 +124,14 @@ def main():
     print(f"{X.shape=}")
 
     print("==========MULTI-HEAD FORWARD PASS==========")
-    # expected: TBD
-    # expected: TBD
+    # expected out: (2, 5, 16)
+    # expected alpha: (2, 2, 5, 5)
     out, alpha = head.forward(X, print_info=True)  
 
+    print("\n==========REAL EMBEDDINGS: MULTI-ATTENTION-HEAD FORWARD PASS ==========")
+    out, alpha, mha, emb = test_with_real_embeddings(B=10, N=20, d_model=16, d_k=8, d_v=8, heads=3, dropout=0.1, vocab_size=50)
+    print(f"{out.shape=}")   # expected: (10, 20, 16)
+    print(f"{alpha.shape}")  # expected: (10, 3, 20, 20)
 
 if __name__ == "__main__":
     main()
