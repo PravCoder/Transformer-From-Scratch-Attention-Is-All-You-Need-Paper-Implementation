@@ -42,7 +42,7 @@ class MultiHeadAttention(nn.Module):
     Arguments:
         X: (batch, seq_len, d_model), input embeddings (number of sequences, length of sequence, embedding dimension for a token), N=seq_len.
     Returns:
-        out: (B, N, d_model), new contextualized representation for each token.
+        out: (B, N, d_model), new contextualized representation for each token. The output embeddings after MHA. Meaning for each token out[b, i, :] is the contextualized embedding  of token i in sequence b.
         alpha: (B, H, N, N), attention weights for each head.
     """
     def forward(self, X, print_info=False):
@@ -63,7 +63,7 @@ class MultiHeadAttention(nn.Module):
         # equation: Qi*K_i^T / root(d_k)
         scores = torch.matmul(Q, K.transpose(-2, -1) / (self.d_k **0.5))
         # compute attention weights alpha
-        # alpha[b, i, j, k] = how much token k's value contributes to token j's new representation
+        # alpha[b, i, j, k] = how much token k's value contributes to token j's new representation in head i of batch b
         alpha = torch.softmax(scores, dim=-1)   # shape: (B, H, N, N)
 
         # compute weight sum of values
@@ -117,21 +117,21 @@ def main():
     X = torch.randn(B, N, d_model)
 
     print("==========CREATE MULTI-HEAD OBJECT==========")
-    head = MultiHeadAttention(d_model=d_model, d_k=d_k, d_v=d_k, heads=heads)  
-    print(f"{head.W_q=}")   # expected (16, (2*8)) = (16, 16)
-    print(f"{head.W_k=}")
-    print(f"{head.W_v=}")
+    mha = MultiHeadAttention(d_model=d_model, d_k=d_k, d_v=d_k, heads=heads)  
+    print(f"{mha.W_q=}")   # expected (16, (2*8)) = (16, 16)
+    print(f"{mha.W_k=}")
+    print(f"{mha.W_v=}")
     print(f"{X.shape=}")
 
     print("==========MULTI-HEAD FORWARD PASS==========")
     # expected out: (2, 5, 16)
     # expected alpha: (2, 2, 5, 5)
-    out, alpha = head.forward(X, print_info=True)  
+    out, alpha = mha(X, print_info=True)  
 
     print("\n==========REAL EMBEDDINGS: MULTI-ATTENTION-HEAD FORWARD PASS ==========")
     out, alpha, mha, emb = test_with_real_embeddings(B=10, N=20, d_model=16, d_k=8, d_v=8, heads=3, dropout=0.1, vocab_size=50)
     print(f"{out.shape=}")   # expected: (10, 20, 16)
-    print(f"{alpha.shape}")  # expected: (10, 3, 20, 20)
+    print(f"{alpha.shape=}")  # expected: (10, 3, 20, 20)
 
 if __name__ == "__main__":
     main()
