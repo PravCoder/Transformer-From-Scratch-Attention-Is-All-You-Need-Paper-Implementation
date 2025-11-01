@@ -1,103 +1,115 @@
-import math
 import torch
-from torch import nn, Tensor
-from multi_head_attention_mechanism import MultiHeadAttention
-from position_wise_fnn import PositionWiseFNN
+import torch.nn as nn
+from encoder_block import EncoderBlock
+
+# TBD: start from text -> do processing of transformer -> etc
 
 
 """
-What: represents an single encoder block not the Encoder itself. The encoder is the composition of N encoder blocks. That is why there is no l layer loop in the forward pass.
-      So you loop over N identical encoder layers is the Encoder module not inside each block. Encoder layer and encdoer block are almost used interchangably
 Methods:
-    forward(): tbd
+    forward(): single forward pass of an entire encoder through its N identical layers
 Attributes:
-    d_model: input embedding size.
-    num_heads: number of attention heads for MHA. 
-    d_ff: inner dim of position-wise feed-forward network
-    activation: act-function for FNN.
-
-Notes: post norm.
+    num_layers: the numebr of N identical layers/block stacke don top of each other in the fullencdoer. Controls the number of times token embeddings are refined through attention + feedforward sublayers
+    d_model: the dimension of the embedding vector for each token. Controls the size fo all projection matrices in attention and feedforward networks.
+    num_heads: number of attention heads used in multi-head attention mechanism
+    d_ff: inner dimension of the feedforward network inside each encoder block
+    dropout: probability of randomly zeroing elements during training, used in self.drop1 & self.drop2.
 """
-class EncoderBlock(nn.Module):
-    
+class Encoder(nn.Module):
 
-    def __init__(self, d_model, num_heads, d_ff, attn_dropout=0.0, residual_dropout_prob=0.0, activation="relu", layer_scale_init=None):
+    def __init__(self, num_layers, d_model, num_heads, d_ff, dropout=0.1, activation="relu"):
         super().__init__()
+        self.num_layers = num_layers
         self.d_model = d_model
         self.num_heads = num_heads
-        self.residual_dropout_prob = residual_dropout_prob
-        
-        self.mha = MultiHeadAttention(d_model=d_model, d_k=d_model, d_v=d_model, heads=num_heads)
-        self.ffn = PositionWiseFNN(d_model=d_model, d_ff=d_ff, activation="relu")
+        self.d_ff = d_ff
+        self.dropout = dropout
 
-        # define the sub-layers for each N identical layers for one encoder block
-        # create layer-normalization-mod for 1st noramlization in attention sublayer, that normalizes tehr euslt of the attention sublayer, and across last dimension the embedding dimension, to stabalize activations & gradeints
-        self.ln1 = nn.LayerNorm(d_model)
-        
-        # create another layer-normalization-mod for 2nd normalization in feedforward sublayer, that noramlizes after the feedforward sublayer
-        self.ln2 = nn.LayerNorm(d_model)
+        self.layers = nn.ModuleList()       # create a list of encoder-block-modules, 
 
-        # create two seperate dropout layers one for each sublayer of the encoder block
-        # this randomly sets each element of the input tensor to zero with the probability of residual_dropout_prob, this is applied to the output of the MHA
-        self.drop1 = nn.Dropout(residual_dropout_prob)
-        self.drop2 = nn.Dropout(residual_dropout_prob)  # is applied to the output of the feedforwad network
+        # iterate number of N-identical layers
+        # create a encoder-block representing each layer, passing in same parameters
+        for _ in range(num_layers): 
+            layer = EncoderBlock(d_model=d_model, num_heads=num_heads, d_ff=d_ff, residual_dropout_prob=dropout, activation=activation)
+            self.layers.append(layer)
+
+        # final layer normalization
+        self.norm = nn.LayerNorm(d_model)
 
     """
-    What: computes forward pass of one encoder block, not Encoder. 
+    What: computes forward pass of an entire encoder by doing a composition of its encoder-block-N-identical-layers, starting from first encoder-block to the last encoder-block
     Arguments:
-        X_l: input to encdoer layer l with shape (B, N, d_model)
-        return_attn: boolean if True it also returns average attention weights (B, N, N)
+        X: the input embeddings (B, N, d_model), where X[b][n] = input-embedding-vector nth token in the  bth sequence in batch.
     Returns:
-        Y_l: output Y^(l) with shape (B, N, d_model), the high-level contextual encdoed embeddings with semantic meaning, context, relationships between all elements in the input data.
+        output: final encoder ouptut (B, N, d_model), that is the high-level contextual representation of the input
+        all_atnn: optional, list of attention tensors [(B, H, N, N)] *num_layers
     """
-    def forward(self, X_l, return_attn=False):
-        # only do post-norm path meaning we apply the layer-norms after the multi-head and fnn sublayers
-        # this is the token embeddings entering the current encoder block, i.e the otput from the previous layer or the embbedings if this is the first layer
-        X = X_l
+    def forward(self, X, return_all_attn=False):
+        attn_list = [] if return_all_attn else None # attn_list=[α(1),α(2),…,α(N)]
 
-        # ---SUB-LAYER 1---:
-        # compute forward pass of multi-head-attention passing X ∈ (B, N, d_model) as input, returns
-        # attn_out: (B, N, d_model) which is new contextulized embeeddings, where attn_out[b, i, :] = new emebbeding for ith token in bth sequence
-        # attn_weights: (B, H, N, N), where alpha[b, h, j, k] = how much token k's value contributes to token j's new representation in head h of batch b, optionally used for visualization
-        attn_out, attn_weights = self.mha(X)
-        # apply first dropout to attention-output, equation is Z^(l) randomly zeros out parts during training to regularize the model
-        attn_out = self.drop1(attn_out) 
-        # first add the original input to this layer (residial) to the attention output, this normalizes the features, this is equation 1.2 in notes, (B, N, d_model)
-        y_l = self.ln1(X + attn_out)     # output of first sublayer of encoder layer
+        # iterate over all N-identical-encoder-layer-blocks
+        for layer in self.layers:
+            # compute forward pass of layer-l passing in current-embeddings-X through encoder-block-layer-l
+            # if its first layer then its the X, else its the previous-layers output X_l-1. Each block computes the 2 sublayers:
+            # sublayer-1: Z^(l) = MultiHead(X^(l-1)), Y^(l) = LayerNorm(X^(l-1) + Dropout(Z^(l)))
+            # sublayer-2: F^(l) = FNN(Y^(l)), X^(l) = LayerNorm(Y^(l) + Dropout(F^(l)))
+            X, attn = layer(X_prev=X, return_attn=return_all_attn)
+            # now this is the input to the next encoder-layer l+1, across layers the embeddings are being contextualized deeper and deeper
 
-        # ---SUB-LAYER 2---:
-        # apply forward-pass of position-wiase feedforward network to each token independlty, equation 2.1
-        # 2-layer neural network ReLU(y^l*W1 + b1)W2 + b2, (B, N, d_model)
-        ffn_out = self.ffn(y_l)
-        # applies dropout to the FFN output, randomly zeros some elements to regularize second sub-layer
-        ffn_out = self.drop2(ffn_out)   
-        # first fnn-output back to its input the output of first sublayer for residual learning (residual connection), normalization
-        out_x_l = self.ln2(y_l + ffn_out)   # equation 2.2
+            if return_all_attn:     # just store the attention matrix (B, H, N, N) for this layer in a list
+                attn_list.append(attn)
 
-        return out_x_l, attn_weights if return_attn else (out_x_l, attn_weights)
+
+        if return_all_attn:     # return with attention-list if they want
+            return X, attn_list
+        
+        # final layer normalization for stability
+        # after the last encdoer-layer-N, X holds the final encoded representation of our input sequence. 
+        # X = H^(N) = f^N_enc(f^N-1_enc(...f^1_enc(X^0)...)) ∈ (B, N, d_model) 
+        # X[b, n, :] = final contextualized embedding vector of bth token in bth sequence of size d_model, the vector stores the original meaning of the token from emeddings plus all the contextual information gather through N layer of multi-head attention and feedforward transformations
+        # so every tokens embedding now knows about every other token in its sequence. 
+        X = self.norm(X)        
+
+        return X
+    
 
 
 def main():
-    B, N, d_model = 2, 5, 32
-    H = 4   # num of heads
-    d_ff = 64   # dim of position-wise-fnn
-
-    print("\n\n==========ENCODER BLOCK MINIMAL TEST==========")
-    print(f"{B=}, {H=}, {d_ff=}")
+    print("\n---------- Setup ----------")
+    B, N = 2, 5         # batch size, sequence length
+    vocab_size = 50     # numer of unqiue tokens
+    d_model = 32        # embedding dimension per token
+    num_heads = 4       # number attention heads for multi-head-attention
+    d_ff = 64           # feedforward network inner dimension
+    num_layer = 3       # number of N-identical encoder-layer-blocks
+    num_layers = 3      # number of encoder blocks
     
-    X = torch.randn(B, N, d_model)  # create a random tensor of input embeddings spahe (batch_size, seq-len, embedding-size)
-    print(f"{X.shape=}")
+    print(f"{B=}, {N=}, {vocab_size=}, {d_model=}, {num_heads=}, {d_ff=}, {num_layer=}")
 
-    encoder_block = EncoderBlock(d_model=d_model, num_heads=H, d_ff=d_ff, attn_dropout=0.1, residual_dropout_prob=0.1, activation="gelu")
+    # creates a learned embedding layer, a lookup table that maps each token-ID to adense vector of continous values its embedding
+    # when you tokenize a sentence oyu get the integer IDs for each token: x_ids = [12, 57, 9, 4, 88]
+    # so the embedding layer converts each integer ID into a learned vector of d_model size
+    # so this layer interally has a weight matrix (vocab_size, d_model), The entries of embedding.weight are learnable parameters. They get updated by backpropagation — just like the weights of any neural network layer.
+    embedding = nn.Embedding(vocab_size, d_model)
 
-    y, attn = encoder_block(X, return_attn=True)
+    # create encoder-module defining hyperparams
+    encdoer = Encoder(num_layers=num_layers, d_model=d_model, num_heads=num_heads, d_ff=d_ff, dropout=0.1, activation="relu")
 
-    print(f"\n{y.shape=}")  # expected [2, 5, 32] = (B, N, d_model)
-    print(f"{attn.shape=}") # expected [2, 4, 5, 5] = (B, H, N, N)
+    print("\n---------- Input ----------")
+    x_ids = torch.randint(0, vocab_size, (B, N))    # create random integer token-IDS, (like frmo tokenized text) 
+    # convert to embeddings (B, N, d_model)
+    x_embed = embedding(x_ids)
+
+    print(f"Input IDs shape: {x_ids.shape}")
+    print(f"Input embeddings shape: {x_embed.shape}")
+
+    print("\n---------- Forward pass ----------")
+    out, attn_list = encdoer(x_embed, return_all_attn=True)
+
+    print(f"Encoder ouptut shape: {out.shape}")
+    print(f"Number of attention layers: {len(attn_list)}")
+    print(f"Attention shape of layer 0: {attn_list[0].shape}")
 
 
 if __name__ == "__main__":
     main()
-
-
-
