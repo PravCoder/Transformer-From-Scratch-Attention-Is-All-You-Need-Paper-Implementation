@@ -19,11 +19,12 @@ Attributes:
 """
 class SelfAttentionHead(nn.Module):
 
-    def __init__(self, d_model, d_k, d_v, dropout):
+    def __init__(self, d_model, d_k, d_v, dropout, show_info=False):
         super().__init__()
         self.d_model = d_model
         self.d_k = d_k
         self.d_v = d_v
+        self.show_info = show_info
         # creates dropout-layer for layer neural network, given the dropout probability
         self.dropout = nn.Dropout(dropout)  
 
@@ -31,8 +32,8 @@ class SelfAttentionHead(nn.Module):
         self.W_q = nn.Linear(d_model, d_k,  bias=False)
         # create linear transformation layer for keys projection weight matrix, shape (d_model, d_k) = (input_embedding_dim, key_vec_dim)
         self.W_k = nn.Linear(d_model, d_k, bias=False)
-        #  # create linear transformation layer for values projection weight matrix, shape (d_model, d_k) = (input_embedding_dim, key_vec_dim)
-        self.W_v = nn.Linear(d_model, d_k, bias=False)
+        #  # create linear transformation layer for values projection weight matrix, shape (d_model, d_v) = (input_embedding_dim, val_vec_dim)
+        self.W_v = nn.Linear(d_model, d_v, bias=False)
     
     """
     What: Forward pass for one self-attention head. Just implement the equations.
@@ -44,18 +45,27 @@ class SelfAttentionHead(nn.Module):
         attention_weights: (batch, seq_len, seq_len), the attention weights after sclaing + softmax
     """
     def forward(self, X, mask=None):
-        # compute projection representations
+        # compute projection representations, Q*X, K*X, V*X, basically for each input embedding in X we project into Q, K, V
+
         # calling forward pass of linear-layer-W_q passing in input X, (B, N, d_model) * (d_model, d_k) = (B, N, d_k), where Qi is query-vector for ith token
+        # Q[i][j] = query vector of the embedding of the ith sequence jth token, used to decide which other tokens this token attends to
         Q = self.W_q(X) 
+
         # calling forward pass of linear-layer-W_k passing in input X, (B, N, d_model) * (d_model, d_k) = (B, N, d_k), where Ki is key-vector for ith token
+        # K[i][j] = key vector of the ith sequence jth token, which represents what features does this token offer for other to match against, what this token has to offer
         K = self.W_k(X)
+
         # calling forward pass of linear-layer-W_v passing in put X, (B, N, d_model) * (d_model, d_k) = (B, N, d_k) where Vi is value-vector for ith token
+        # V[i][j] = value vecor of ith sequence jth token, represents if someone attends to token-j this is the infromation it contribute
         V = self.W_v(X)
 
-        print(f"Q: {Q.shape}")
-        print(f"K: {K.shape}")
-        print(f"V: {V.shape}")
+        if self.show_info:
+            print(f"Q: {Q.shape}")
+            print(f"K: {K.shape}")
+            print(f"V: {V.shape}")
 
+
+        # Just implementing equations below to geenrate outputs z, α
         # scaled dot product attention scores: QK^T / √d_k
         # K.transpose(-2, -1) swaps the last two dimensions from (B, N, d_k) -> (B, d_k, N)
         scaled_scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(Q.size(-1))

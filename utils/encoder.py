@@ -6,6 +6,7 @@ from encoder_block import EncoderBlock
 
 
 """
+What: represents the entire encoder module not just one block.
 Methods:
     forward(): single forward pass of an entire encoder through its N identical layers
 Attributes:

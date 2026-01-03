@@ -5,8 +5,9 @@ import torch.nn.functional as F
 
 
 """
+What: represents multi head self attention mechanism
 Methods:
-    forward(): computes forward pass of single MHA head
+forward(): computes forward pass of single MHA head
 Attributes:
     d_model: input embedding dimension for a token
     d_k: dimension of keys, dim of key vector for ith word
@@ -14,7 +15,6 @@ Attributes:
     dropout: dropout rate for attention weights. Probability that nay given neurons output will be set ot zero.
     heads: number of attention heads for MHAM
 
-bookmark: Skeleton in PyTorch
 """
 class MultiHeadAttention(nn.Module):
 

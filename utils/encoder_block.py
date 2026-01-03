@@ -28,7 +28,7 @@ class EncoderBlock(nn.Module):
         self.residual_dropout_prob = residual_dropout_prob
         
         self.mha = MultiHeadAttention(d_model=d_model, d_k=d_model, d_v=d_model, heads=num_heads)
-        self.ffn = PositionWiseFNN(d_model=d_model, d_ff=d_ff, activation="relu")
+        self.ffn = PositionWiseFNN(d_model=d_model, d_ff=d_ff, activation="relu")   # each layer has its own parameters (attn weights, FNN weights)
 
         # define the sub-layers for each N identical layers for one encoder block
         # create layer-normalization-mod for 1st noramlization in attention sublayer, that normalizes tehr euslt of the attention sublayer, and across last dimension the embedding dimension, to stabalize activations & gradeints
@@ -43,7 +43,7 @@ class EncoderBlock(nn.Module):
         self.drop2 = nn.Dropout(residual_dropout_prob)  # is applied to the output of the feedforwad network
 
     """
-    What: computes forward pass of one encoder block, not Encoder. 
+    What: computes forward pass of one encoder block, not Enc
     Arguments:
         X_l: input to encdoer layer l with shape (B, N, d_model)
         return_attn: boolean if True it also returns average attention weights (B, N, N)
@@ -71,7 +71,7 @@ class EncoderBlock(nn.Module):
         ffn_out = self.ffn(y_l)
         # applies dropout to the FFN output, randomly zeros some elements to regularize second sub-layer
         ffn_out = self.drop2(ffn_out)   
-        # first fnn-output back to its input the output of first sublayer for residual learning (residual connection), normalization
+        # first add fnn-output back to its input or the output of first sublayer for residual learning (residual connection), normalization
         out_x_l = self.ln2(y_l + ffn_out)   # equation 2.2
 
         return out_x_l, attn_weights if return_attn else (out_x_l, None)
