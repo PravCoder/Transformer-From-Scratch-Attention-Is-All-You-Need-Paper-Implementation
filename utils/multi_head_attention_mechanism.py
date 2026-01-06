@@ -18,7 +18,7 @@ Attributes:
 """
 class MultiHeadAttention(nn.Module):
 
-    def __init__(self, d_model, d_k, d_v, heads):
+    def __init__(self, d_model, d_k, d_v, heads, dropout=0.0):
         super().__init__()
         self.d_model = d_model
         self.d_k = d_k
@@ -36,6 +36,10 @@ class MultiHeadAttention(nn.Module):
 
         # final output projection
         self.W_o = nn.Linear(heads * d_v, d_model)
+
+        # creates a dropout-layer that will only be applied to the attnetion weights or softmaz output, dropouts is applied in training and not in inference, torch handles automaticallys
+        # prevents heads from focusing too much on tokens, reduces overfitting.
+        self.attn_dropout = nn.Dropout(dropout) 
 
     """
     What: Forward pass for one multi-head attention. Just implement the equations
@@ -62,9 +66,11 @@ class MultiHeadAttention(nn.Module):
 
         # equation: Qi*K_i^T / root(d_k)
         scores = torch.matmul(Q, K.transpose(-2, -1) / (self.d_k **0.5))
+        
         # compute attention weights alpha
-        # alpha[b, i, j, k] = how much token k's value contributes to token j's new representation in head i of batch b
+        # alpha[b, i, j, k] = how much token k's value contributes to token j's new representation in head i of batch b         -- IMPORTANT
         alpha = torch.softmax(scores, dim=-1)   # shape: (B, H, N, N)
+        alpha = self.attn_dropout(alpha)        # apply dropout to thse attention weights meaning some attention links between tokens are randomly removed 
 
         # compute weight sum of values
         # Z[i] = alpha_i * V_i this gives output of each head

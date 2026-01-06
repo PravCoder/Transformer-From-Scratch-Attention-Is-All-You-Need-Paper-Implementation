@@ -110,7 +110,7 @@ def test_with_real_embeddings(B=2, N=5, d_model=16, d_k=8, d_v=8, dropout=0.1, v
     print(f"x_real: {x_real.shape}")
 
 
-    head = SelfAttentionHead(d_model=d_model, d_k=d_k, d_v=d_k, dropout=0.1)  
+    head = SelfAttentionHead(d_model=d_model, d_k=d_k, d_v=d_k, dropout=0.1, show_info=True)  
     # expected shape z: (2, 5, 8)
     # expected shape attention_weights: (2, 5, 5)
     z, attention_weights = head(x_real)
