@@ -25,7 +25,8 @@ class MultiHeadAttention(nn.Module):
         self.d_v = d_v
         self.heads = heads
 
-        # create linear transformation layers for query, key, value weight matrices which store those weight matrices for each head i.
+        # create linear transformation layers for query, key, value weight matrices which store those weight matrices for each head i, these are trainable weight matrices that are updated in backprop
+        # these weights are trainable because the queyr, key and value represent different things
         # linear layers to project X -> Q, K, V for all heads at once
         # big-projection-query-weight-matrix where each query-weight-matrix for head i is stacked side by side, shape (input-embed-dim, num-heads * key_vec_dim)
         self.W_q = nn.Linear(d_model, heads * d_k)
@@ -34,7 +35,7 @@ class MultiHeadAttention(nn.Module):
         # big-projection-value-weight-matrix where each value-weight-matrix for head i is stacked side by side, shape (input-embed-dim, num-heads * value_vec_dim)
         self.W_v = nn.Linear(d_model, heads * d_v)
 
-        # final output projection
+        # final output projection, projects and mixes the concatenated head outputs into a single token representation
         self.W_o = nn.Linear(heads * d_v, d_model)
 
         # creates a dropout-layer that will only be applied to the attnetion weights or softmaz output, dropouts is applied in training and not in inference, torch handles automaticallys
@@ -44,28 +45,47 @@ class MultiHeadAttention(nn.Module):
     """
     What: Forward pass for one multi-head attention. Just implement the equations
     Arguments:
-        X: (batch, seq_len, d_model), input embeddings (number of sequences, length of sequence, embedding dimension for a token), N=seq_len.
+        Q_in: (B, N_q ,d_model)
+        K_in: (B, N_k ,d_model)
+        V_in: (B, N_k ,d_model)
+        mask: None or boolean tensor broadcastable to (B, H, N_q, N_k)
+
+        where N_q = number of query positions, N_k = number key/value positions.
+        in MHA of encoder Q,,K,V=X: (batch, seq_len, d_model), input embeddings (number of sequences, length of sequence, embedding dimension for a token), N=seq_len.
     Returns:
         out: (B, N, d_model), new contextualized representation for each token. The output embeddings after MHA. Meaning for each token out[b, i, :] is the contextualized embedding  of token i in sequence b.
         alpha: (B, H, N, N), attention weights for each head.
     """
-    def forward(self, X, print_info=False):
-        B, N, _ = X.shape
+    def forward(self, Q_in, K_in, V_in, mask=None, print_info=False):
+        B, N_q, _ = Q_in.shape
+        B2, N_k, _ = K_in.shape
+        assert B == B2, "Error[Batch size mismatch between Q and K]"
+        assert V_in.shape[:2] == (B, N_k), "V must havev same (B, N_k) shape as K"
 
         # project and split into heads
-        # for queries, keys, values multiply the corresponding learned-project-weight-matrices with input-embedding-X
+        # for queries, keys, values multiply the corresponding learned-project-weight-matrices with inputss-Q-K-V
         # shape (batch size, seq-len, num of heads, vector size of keys and values)
-        Q = self.W_q(X).view(B, N, self.heads, self.d_k)
-        K = self.W_k(X).view(B, N, self.heads, self.d_k)
-        V = self.W_v(X).view(B, N, self.heads, self.d_v)
+        Q = self.W_q(Q_in).view(B, N_q, self.heads, self.d_k)
+        K = self.W_k(K_in).view(B, N_k, self.heads, self.d_k)
+        V = self.W_v(V_in).view(B, N_k, self.heads, self.d_v)
 
         # reshape heads into (B, H, B, d_k/d_v), so each head gets is own slice
-        Q = Q.transpose(1, 2)   # Q[b, i, j, :] = query vector for jth token in the ith head, from bth sequence in batch. What does query vector represent?
-        K = K.transpose(1, 2)   # K[b, i, j, :] = key vector for jth token in the ith head, from bth sequence in batch.  What does key vector represent?
-        V = V.transpose(1, 2)   # V[b, i, j, :] = value vector for jth token in the ith head, from bth sequence in batch.  What does value vector represent?
+        Q = Q.transpose(1, 2)   # Q[b, i, j, :] = query vector for jth token in the ith head, from bth sequence in batch. Query Vector represents what the jth tokens is looking for in all other tokens in bth sequence when computing attention
+        K = K.transpose(1, 2)   # K[b, i, j, :] = key vector for jth token in the ith head, from bth sequence in batch. Key Vector represents what the jth token offers to be matched against all the other tokens queries
+        V = V.transpose(1, 2)   # V[b, i, j, :] = value vector for jth token in the ith head, from bth sequence in batch. Value Vector represents the information contributed by the jth token if it is attended to
 
         # equation: Qi*K_i^T / root(d_k)
-        scores = torch.matmul(Q, K.transpose(-2, -1) / (self.d_k **0.5))
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / (self.d_k ** 0.5)
+
+        # apply mask before softmax
+        # mask modifies attention logits before the softmax so that certain key positions are not allowed to contribute to the output
+        # masked positions get exactly zero attention weight
+        # for α[b,h,i,j] in batch b, head h, how much does query token i attend to key token j, the mask lets us forbid cerain (i, j) pairs
+        # mask controls which keys are allowed to influence each query
+        if mask == True:
+            if mask.dtype != torch.bool:
+                mask = mask.to(torch.bool)
+            scores = scores.masked_fil(mask, float("-inf"))
         
         # compute attention weights alpha
         # alpha[b, i, j, k] = how much token k's value contributes to token j's new representation in head i of batch b         -- IMPORTANT
@@ -78,10 +98,10 @@ class MultiHeadAttention(nn.Module):
         Z = torch.matmul(alpha, V)  
 
         # concatenate heads, Z = concat(Z1,...,Zh), shape (B, N, (h * dv))
-        Z = Z.transpose(1, 2).contiguous().view(B, N, self.heads * self.d_v)
+        Z = Z.transpose(1, 2).contiguous().view(B, N_q, self.heads * self.d_v)
 
         # compute final output projection, Z*W_o
-        # Z*W_o[b, n, :] = gets the new repsentation-vector of bth sequence of nth token
+        # Z*W_o[b, n, :] = gets the new repsentation-vector of bth sequence of nth token, this is not a literal matrix multiplication in code it is a linear layer applied independently per token
         out = self.W_o(Z)
 
         
@@ -112,8 +132,8 @@ def test_with_real_embeddings(B=10, N=20, d_model=16, d_k=8, d_v=8, heads=3, dro
     x_real = emb(x_ids)
     print(f"x_real: {x_real.shape}")
 
-    mha = MultiHeadAttention(d_model=d_model, d_k=d_k, d_v=d_v, heads=heads)
-    out, attention_weights = mha(x_real)
+    mha = MultiHeadAttention(d_model=d_model, d_k=d_k, d_v=d_v, heads=heads, dropout=dropout)
+    out, attention_weights = mha(Q_in=x_real, K_in=x_real, V_in=x_real)    # basically Q=x_real*W_q, K=x_real*W_k, V=x_real*W_v then it breaks it down with the weights
 
     return out, attention_weights, mha, emb
 
@@ -123,7 +143,7 @@ def main():
     X = torch.randn(B, N, d_model)
 
     print("==========CREATE MULTI-HEAD OBJECT==========")
-    mha = MultiHeadAttention(d_model=d_model, d_k=d_k, d_v=d_k, heads=heads)  
+    mha = MultiHeadAttention(d_model=d_model, d_k=d_k, d_v=d_v, heads=heads)
     print(f"{mha.W_q=}")   # expected (16, (2*8)) = (16, 16)
     print(f"{mha.W_k=}")
     print(f"{mha.W_v=}")
@@ -132,7 +152,16 @@ def main():
     print("==========MULTI-HEAD FORWARD PASS==========")
     # expected out: (2, 5, 16)
     # expected alpha: (2, 2, 5, 5)
-    out, alpha = mha(X, print_info=True)  
+    out, alpha = mha(Q_in=X, K_in=X, V_in=X, print_info=True)  
+
+    print("\n==========CROSS-ATTENTION TEST==========")
+    Q = torch.randn(B, 7, d_model)     # N_q = 7
+    K = torch.randn(B, 11, d_model)    # N_k = 11
+    V = torch.randn(B, 11, d_model)    # must match N_k
+    out, alpha = mha(Q_in=Q, K_in=K, V_in=V, print_info=True)
+    # expected out: (B, 7, d_model)
+    # expected alpha: (B, heads, 7, 11)
+
 
     print("\n==========REAL EMBEDDINGS: MULTI-ATTENTION-HEAD FORWARD PASS ==========")
     out, alpha, mha, emb = test_with_real_embeddings(B=10, N=20, d_model=16, d_k=8, d_v=8, heads=3, dropout=0.1, vocab_size=50)

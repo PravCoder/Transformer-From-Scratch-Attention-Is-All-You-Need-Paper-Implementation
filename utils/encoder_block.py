@@ -9,7 +9,7 @@ from position_wise_fnn import PositionWiseFNN
 What: represents an single encoder block not the Encoder itself. The encoder is the composition of N encoder blocks. That is why there is no l layer loop in the forward pass.
       So you loop over N identical encoder layers is the Encoder module not inside each block. Encoder layer and encdoer block are almost used interchangably
 Methods:
-    forward(): tbd
+    forward(): computes forward pass for a single encoder block which is computing subalyer-1 & subalyer-2
 Attributes:
     d_model: input embedding size.
     num_heads: number of attention heads for MHA. 
@@ -59,7 +59,7 @@ class EncoderBlock(nn.Module):
         # compute forward pass of multi-head-attention passing X ∈ (B, N, d_model) as input, returns
         # attn_out: (B, N, d_model) which is new contextulized embeeddings, where attn_out[b, i, :] = new emebbeding for ith token in bth sequence
         # attn_weights: (B, H, N, N), where alpha[b, h, j, k] = how much token k's value contributes to token j's new representation in head h of batch b, optionally used for visualization
-        attn_out, attn_weights = self.mha(X)
+        attn_out, attn_weights = self.mha(Q_in=X, K_in=X, V_in=X)   # in encoder Q,K,V is equal to X embeddings
         # apply first dropout to attention-output, equation is Z^(l) randomly zeros out parts during training to regularize the model
         attn_out = self.drop1(attn_out) 
         # first add the original input to this layer (residial) to the attention output, this normalizes the features, this is equation 1.2 in notes, (B, N, d_model)
