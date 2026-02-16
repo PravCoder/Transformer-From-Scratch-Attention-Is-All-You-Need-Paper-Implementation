@@ -82,10 +82,10 @@ class MultiHeadAttention(nn.Module):
         # masked positions get exactly zero attention weight
         # for α[b,h,i,j] in batch b, head h, how much does query token i attend to key token j, the mask lets us forbid cerain (i, j) pairs
         # mask controls which keys are allowed to influence each query
-        if mask == True:
+        if mask is not None:
             if mask.dtype != torch.bool:
                 mask = mask.to(torch.bool)
-            scores = scores.masked_fil(mask, float("-inf"))
+            scores = scores.masked_fill(mask, float("-inf"))
         
         # compute attention weights alpha
         # alpha[b, i, j, k] = how much token k's value contributes to token j's new representation in head i of batch b         -- IMPORTANT
