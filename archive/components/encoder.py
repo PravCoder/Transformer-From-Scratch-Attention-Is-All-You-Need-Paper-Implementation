@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from encoder_block import EncoderBlock
+from archive.components.encoder_block import EncoderBlock
 
 # TBD: start from text -> do processing of transformer -> etc
 

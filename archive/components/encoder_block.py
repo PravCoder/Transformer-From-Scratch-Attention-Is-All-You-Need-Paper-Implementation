@@ -1,8 +1,8 @@
 import math
 import torch
 from torch import nn, Tensor
-from multi_head_attention_mechanism import MultiHeadAttention
-from position_wise_fnn import PositionWiseFNN
+from archive.components.multi_head_attention_mechanism import MultiHeadAttention
+from archive.components.position_wise_fnn import PositionWiseFNN
 
 
 """

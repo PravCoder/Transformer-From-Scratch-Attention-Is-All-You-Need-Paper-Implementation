@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from position_wise_fnn import PositionWiseFNN
-from multi_head_attention_mechanism import MultiHeadAttention
+from archive.components.position_wise_fnn import PositionWiseFNN
+from archive.components.multi_head_attention_mechanism import MultiHeadAttention
 
 """
 TODO:
