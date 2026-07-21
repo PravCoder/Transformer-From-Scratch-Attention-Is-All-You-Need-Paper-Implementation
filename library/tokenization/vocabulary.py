@@ -14,6 +14,8 @@ tokenID -> token
 Token IDs are assigned sequentially starting from 0. 
 
 Note tokens are of datatype string and tokenIDs are of type int.
+
+The vocabulary is the complete set of tokens that the tokenizer has learned, where each token is assigned a unique integer ID.
 """
 class Vocabulary:
 
