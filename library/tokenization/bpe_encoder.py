@@ -2,7 +2,7 @@
 FILE: implements the BPE Encoding Algorithm
 """
 
-from vocabulary import Vocabulary
+from tokenization.vocabulary import Vocabulary
 
 # a typed variable to represent two paired tokens
 TokenPair = tuple[str, str]
@@ -87,7 +87,7 @@ class BPEEncoder:
         return updated_tokens
 
 
-
+# run: python -m tokenization.bpe_encoder, library/
 if __name__ == "__main__":
     from bpe_trainer import BPETrainer
 

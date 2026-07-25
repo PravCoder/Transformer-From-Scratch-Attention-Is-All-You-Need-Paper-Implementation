@@ -1,7 +1,7 @@
 """
 FILE: implements the BPE Training Algorithm
 """
-from vocabulary import Vocabulary
+from tokenization.vocabulary import Vocabulary
 from dataclasses import dataclass
 
 
@@ -251,7 +251,8 @@ class BPETrainer:
                 sequence.copy() for sequence in self.tokenized_corpus
             ]
         )
-    
+
+# run: python -m tokenization.bpe_trainer, library/
 if __name__ == "__main__":
 
     print("------Testing BPE Trainer------\n")

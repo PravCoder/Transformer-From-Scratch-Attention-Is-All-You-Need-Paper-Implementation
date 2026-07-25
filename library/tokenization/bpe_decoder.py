@@ -2,7 +2,7 @@
 FILE: implements the BPE Decoding algorithm
 """
 
-from vocabulary import Vocabulary
+from tokenization.vocabulary import Vocabulary
 
 class BPEDecoder:
 
@@ -35,7 +35,7 @@ class BPEDecoder:
         # given token-strings, join them to reconstruct the original text, ["hell", "o"] -> "hello"
         return "".join(tokens)
 
-
+# run: python -m tokenization.bpe_decoder, library/
 if __name__ == "__main__":
     from bpe_trainer import BPETrainer
     from bpe_encoder import BPEEncoder

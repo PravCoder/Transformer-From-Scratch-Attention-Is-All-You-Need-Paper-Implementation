@@ -23,6 +23,8 @@ class Vocabulary:
         self.token_to_id: dict[str, int] = {}       # mapping from token-str to tokenID-int
         self.id_to_token: dict[int, str] = {}       # mapping from tokenID-int to token-str
 
+        self._special_tokens: set[str] = set()       # store all our special tokens in our vocabulary, set because we want all unique
+
     # adds a given token-str to the vocab which means adding it to both mappings
     def add_token(self, token: str) -> int:
         # if param is not str raise error
@@ -60,7 +62,13 @@ class Vocabulary:
         
         # use tokenID to get its token-str
         return self.id_to_token[token_id]
-    
+
+    # add a reserved soecial token to the vocabulary, given the token-string
+    def add_special_token(self, token: str) -> int:
+        token_id = self.add_token(token)
+        self.special_tokens.add(token)  # add it to our unique list of special tokens so we know what special tokens exist in our vocab
+
+        return token_id
 
     # return t/f if token exists in vocab
     def contains_token(self, token: str) -> bool:
@@ -69,6 +77,10 @@ class Vocabulary:
     # return t/f if tokenID exists in vocab
     def contains_id(self, token_id: int) -> bool:
         return token_id in self.id_to_token
+
+    # return t/f if given token-string is a special token in our vocabulary
+    def is_special_token(self, token: str) -> bool:
+        return token in self._special_tokens
 
     # returns a copy of token-to-ID mapping
     @property
@@ -79,6 +91,16 @@ class Vocabulary:
     @property
     def _id_to_token(self) -> dict[str, int]:
         return self.id_to_token.copy()
+
+    # returns a copy of all our special tokens that this tokenizer uses
+    @property
+    def special_tokens(self) -> set[str]:
+        return self._special_tokens.copy()
+
+    # getter to get the special-tokens of the tokenizer's vocabulary
+    @property
+    def special_tokens(self) -> set[str]:
+        return self._special_tokens.copy()
     
     # supports the "hello" in vocabulary in python native, implement our own custom in method for this class
     def __contains__(self, token: str) -> bool:
@@ -92,7 +114,7 @@ class Vocabulary:
     def __repr__(self) -> str:
         return f"Vocabulary(size={len(self)})"
 
-
+# run: python -m tokenization.vocabulary, library/
 if __name__ == "__main__":
     print("\n------Testing Vocabulary of Tokenizer-----")
     vocabulary = Vocabulary()

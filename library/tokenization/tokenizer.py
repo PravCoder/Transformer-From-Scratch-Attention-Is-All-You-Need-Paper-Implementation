@@ -3,18 +3,19 @@ FILE: high-level interface that ties everything together for tokenizer: train(),
 Just combines everything in vocabulary.py, bpe_trainer.py, bpe_encoder.py, bpe_decoder.py.
 """
 
-from vocabulary import Vocabulary
-from bpe_trainer import BPETrainer
-from bpe_encoder import BPEEncoder
-from bpe_decoder import BPEDecoder
+from tokenization.vocabulary import Vocabulary
+from tokenization.bpe_trainer import BPETrainer
+from tokenization.bpe_encoder import BPEEncoder
+from tokenization.bpe_decoder import BPEDecoder
+from tokenization.special_tokens import TransformerArchitecture, DEFAULT_SPECIAL_TOKENS
 # a typed variable to represent two paired tokens
 TokenPair = tuple[str, str]
 
 
 class BPETokenizer:
 
-
-    def __init__(self) -> None:
+    # the tokenizer needs what transformer-architecture we are dealing with so it can add the special tokens, and you can also add extra tokens in addition to the default special tokens
+    def __init__(self, architecture: TransformerArchitecture, additional_special_tokens: list[str] | None = None) -> None:
         # represents the vocabulary of the tokenizer, which stores what tokens it knows
         self.vocabulary: Vocabulary | None = None
         # stores token-pair that should be mergerd which represents a merge-rrule
@@ -28,6 +29,17 @@ class BPETokenizer:
         # if the tokenizer has been trained or not
         self.is_trained = False
 
+        # the transformer-architecture of this model
+        self.architecture = architecture
+        # extra special tokens different from the default special tokens
+        self.additional_special_tokens = (
+            additional_special_tokens.copy()
+            if additional_special_tokens is not None
+            else []
+        )
+        # store the special-token-string to token-id, even tho they are in the vocabulary, just for the getters
+        self.special_token_ids: dict[str, int] = {}
+
     def train(self, corpus: list[str], target_vocab_size: int, min_pair_freq: int = 1):
         # init the tokenizer's train
         trainer = BPETrainer(corpus=corpus, target_vocab_size=target_vocab_size, min_pair_freq=min_pair_freq)
@@ -37,6 +49,9 @@ class BPETokenizer:
         # save the trained vocabulary and merge rules
         self.vocabulary = training_result.vocabulary
         self.merge_rules = training_result.merge_rules.copy()
+
+        # add all the special tokens to vocabulary
+        self.add_architecture_special_tokens()
 
         # after training the tokenizer init its encoder and decoder
         self.encoder = BPEEncoder(vocabulary=self.vocabulary, merge_rules=self.merge_rules)
@@ -62,6 +77,22 @@ class BPETokenizer:
     def decode(self, token_ids: list[int]) -> str:
         return self.decoder.decode(token_ids)
 
+
+    def add_architecture_special_tokens(self):
+        if self.vocabulary is None:
+            raise RuntimeError("Vocabulary must exist before adding special tokens.")
+
+        # get the list of default special tokens for this architecture
+        architecture_special_tokens = DEFAULT_SPECIAL_TOKENS[self.architecture]
+
+        # all the special tokens are the default-arch-special-tokens plus the additional special tokens
+        all_special_tokens = (architecture_special_tokens + self.additional_special_tokens)
+
+        # iterate all special tokens and add it to the vocabulary and our other storage of special tokens
+        for special_token in all_special_tokens:
+            special_token_id = self.vocabulary.add_special_token(special_token)
+            self.special_token_ids[special_token] = special_token_id
+
     
     # -- helper funcs ---
     def get_vocabulary(self) -> dict[str, int]:
@@ -78,6 +109,18 @@ class BPETokenizer:
         assert self.vocabulary is not None
         return len(self.vocabulary)
 
+    def get_special_token_id(self, token: str) -> int:
+        self.check_is_trained()
+
+        if token not in self.special_token_ids:
+            raise KeyError(f"Special token {token!r} is not configured for "f"{self.architecture.value!r}.")
+
+        return self.special_token_ids[token]
+
+    def get_special_token_ids(self) -> dict[str, int]:
+        self.check_is_trained()
+        return self.special_token_ids.copy()
+
     def check_is_trained(self) -> None:
         if not self.is_trained:
             raise RuntimeError(
@@ -85,7 +128,7 @@ class BPETokenizer:
                 "tokenize(), encode(), or decode()."
             )
 
-
+# run: python -m tokenization.tokenizer, library/
 if __name__ == "__main__":
 
     print("------ Testing Complete BPE Tokenizer ------\n")
@@ -96,7 +139,9 @@ if __name__ == "__main__":
         "helmet",
     ]
 
-    tokenizer = BPETokenizer()
+    tokenizer = BPETokenizer(
+        architecture=TransformerArchitecture.ENCODER_DECODER,
+    )
 
     tokenizer.train(
         corpus=corpus,
@@ -109,11 +154,29 @@ if __name__ == "__main__":
     token_ids = tokenizer.encode(original_text)
     decoded_text = tokenizer.decode(token_ids)
 
-    print("Vocabulary:")
+    print("Architecture:")
+    print(tokenizer.architecture.value)
+
+    print("\nVocabulary:")
     print(tokenizer.get_vocabulary())
 
     print("\nMerge Rules:")
     print(tokenizer.get_merge_rules())
+
+    print("\nSpecial Token IDs:")
+    print(tokenizer.get_special_token_ids())
+
+    print("\nPAD ID:")
+    print(tokenizer.get_special_token_id("<PAD>"))
+
+    print("\nBOS ID:")
+    print(tokenizer.get_special_token_id("<BOS>"))
+
+    print("\nEOS ID:")
+    print(tokenizer.get_special_token_id("<EOS>"))
+
+    print("\nUNK ID:")
+    print(tokenizer.get_special_token_id("<UNK>"))
 
     print("\nOriginal Text:")
     print(original_text)
@@ -129,3 +192,6 @@ if __name__ == "__main__":
 
     print("\nRound-trip successful:")
     print(original_text == decoded_text)
+
+    print("\nFinal Vocabulary Size:")
+    print(tokenizer.get_vocab_size())
