@@ -1,3 +1,6 @@
+"""
+FILE: define the special tokens that are the default ones for each transformer type.
+"""
 from configs.model import TransformerArchitecture
 
 # define a dict that maps the transformer-arch-type to the list strings of its corresponding special-tokens since different architectures have different special tokens

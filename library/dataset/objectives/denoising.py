@@ -22,7 +22,7 @@ class DenoisingAutoencodingTrainingOjective(UnpairedTextTrainingObjectiveBase): 
     Creates one training example of the form source-corrupted-sequence -> target-original-sequence using denoising autoencoding from one given text item from unpaired corpus. 
     Then this is applied to all items in unpaired corpus to get all text training examples.
     """
-    def create_examples(self, text: str, random_generator: Random) -> list[EncoderDecoderTextTrainingExample]:
+    def create_examples(self, text: str, random_generator: Random) -> list[EncoderDecoderTextTrainingExample]:  # text = one corpus item
         # split the text into words so we can determine whether this corpus itme contains multiple words or only one word
         words = text.split()
 
