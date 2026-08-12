@@ -24,3 +24,12 @@ class EncoderDecoderTextTrainingExample:
             raise ValueError("source_text cannot be empty.")
         if not self.target_text.strip():
             raise ValueError("target_text cannot be empty.")
+
+"""
+Represents a tokenized training example for encoder-decoder model. 
+Has a source-sequence of token ids & target-sequence of token ids. (the tokenizer is used to encode EncoderDecoderTextTrainingExample)
+"""
+@dataclass
+class EncoderDecoderTokenizedTrainingExample:
+    source_token_ids: list[int]
+    target_token_ids: list[int]

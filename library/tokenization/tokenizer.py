@@ -8,6 +8,7 @@ from tokenization.bpe_trainer import BPETrainer
 from tokenization.bpe_encoder import BPEEncoder
 from tokenization.bpe_decoder import BPEDecoder
 from tokenization.special_tokens import TransformerArchitecture, DEFAULT_SPECIAL_TOKENS
+from dataset.training_example import EncoderDecoderTextTrainingExample, EncoderDecoderTokenizedTrainingExample
 # a typed variable to represent two paired tokens
 TokenPair = tuple[str, str]
 
@@ -76,6 +77,32 @@ class BPETokenizer:
     """
     def decode(self, token_ids: list[int]) -> str:
         return self.decoder.decode(token_ids)
+
+    """
+    Given the text training examples that was created from the corpus by the given training objective, use the 
+    trained tokenizers encoder function to encode all the text training examples into token IDs. Returns list of tokenized training examples.
+    """
+    def encode_training_examples(self, training_examples: list[EncoderDecoderTextTrainingExample]) -> list[EncoderDecoderTokenizedTrainingExample]:
+        # in order ot encode training examples the tokenizer must be trained, raise error if not
+        self.check_is_trained()
+
+        # stores the tokenized training examples objs
+        tokenized_training_examples = []
+
+        # iterate all text-training-examples
+        for cur_training_example in training_examples:
+            # encode the cur-text-training-example source-text to get source-sequence-token-ids
+            source_token_ids = self.encode(cur_training_example.source_text)
+
+            # encode the cur-text-training-example target-text to get the target-sequence-token-ids
+            target_token_ids = self.encode(cur_training_example.target_text)
+
+            # create the tokenized-training-example-obj
+            cur_tokenized_training_example = EncoderDecoderTokenizedTrainingExample(source_token_ids=source_token_ids, target_token_ids=target_token_ids)
+            # add to all tokenized-training-examples
+            tokenized_training_examples.append(cur_tokenized_training_example)
+
+        return tokenized_training_examples
 
 
     def add_architecture_special_tokens(self):
@@ -195,3 +222,45 @@ if __name__ == "__main__":
 
     print("\nFinal Vocabulary Size:")
     print(tokenizer.get_vocab_size())
+
+    print("\n------ Testing Encode Training Examples ------\n")     # note: this test has to match the vocabuary above
+    training_examples = [
+        EncoderDecoderTextTrainingExample(
+            source_text="helo",
+            target_text="hello",
+        ),
+        EncoderDecoderTextTrainingExample(
+            source_text="help",
+            target_text="helmet",
+        ),
+    ]
+
+    encoded_training_examples = tokenizer.encode_training_examples(
+        training_examples=training_examples
+    )
+
+    print("Number of text training examples:")
+    print(len(training_examples))
+
+    print("\nNumber of encoded training examples:")
+    print(len(encoded_training_examples))
+
+    print("\nText Training Example 1:")
+    print("source: " + training_examples[0].source_text)
+    print("target: " + training_examples[0].target_text)
+    print("\nText Training Example 2:")
+    print("source: " + training_examples[1].source_text)
+    print("target: " + training_examples[1].target_text)
+
+    for indx, encoded_example in enumerate(encoded_training_examples):
+
+        print(f"\nEncoded Training Example {indx + 1}:")
+
+        print("Source Token IDs:")
+        print(encoded_example.source_token_ids)
+
+        print("Target Token IDs:")
+        print(encoded_example.target_token_ids)
+
+    print("\nOne encoded example generated per text training example:")
+    print(len(encoded_training_examples) == len(training_examples))
