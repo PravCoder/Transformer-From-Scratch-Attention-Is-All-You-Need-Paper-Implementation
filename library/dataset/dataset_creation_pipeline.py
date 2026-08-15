@@ -13,7 +13,7 @@ Step 5:
         - Train BPE - Build vocabulary - Encode - Decode - Add Required special tokens to vocab - Encode the text training examples
 
 Step 6:
-    Construct model input and target sequences
+    Construct model input and target sequences (model training examples)
 """
 
 from collections.abc import Iterable
@@ -22,7 +22,7 @@ from tokenization.special_tokens import TransformerArchitecture
 from dataset.paired_example_builder import PairedTextTrainingExampleBuilder
 from dataset.unpaired_example_builder import UnpairedTextTrainingExampleBuilder
 from dataset.objectives.base import UnpairedTextTrainingObjectiveBase
-from dataset.training_example import EncoderDecoderTextTrainingExample, EncoderDecoderTokenizedTrainingExample 
+from dataset.training_example import EncoderDecoderTextTrainingExample, EncoderDecoderTokenizedTrainingExample , EncoderDecoderModelTrainingExample
 
 class EncoderDecoderDatasetCreationPipeline:
 
@@ -38,7 +38,7 @@ class EncoderDecoderDatasetCreationPipeline:
     """
     Builds the dataset fed into the model given either paired or unpaired corpus text, by following the steps above.
     """
-    def create_dataset(self, corpus: Iterable[tuple[str, str]] | Iterable[str]):
+    def create_dataset(self, corpus: Iterable[tuple[str, str]] | Iterable[str], debug: bool = False):
         # convert iterable into a list
         corpus = list(corpus)
 
@@ -57,9 +57,8 @@ class EncoderDecoderDatasetCreationPipeline:
 
             # unpaired-corpus so uses the training-objective defined to create text-example-objs EncoderDecoderTextTrainingExample
             text_training_examples = example_builder.build_training_examples(corpus)
-        
 
-        
+        self.debug_step4(debug=debug, training_examples=text_training_examples)
 
         # ================ STEP 5: train tokenizer ================
         
@@ -74,15 +73,61 @@ class EncoderDecoderDatasetCreationPipeline:
         # use the tokenizer-obj to train the tokenizer which creates the vocab & merge rules
         self.tokenizer.train(corpus=tokenizer_corpus, target_vocab_size=self.target_vocab_size)
 
+        self.debug_step5_tokenizer(debug=debug)
+        
+
         # ================ STEP 5: Encode the text training examples ================
-        # after training the tokenizer use to encode the text-training-examples into token IDs, gives list of EncoderDecoderTokenizedTrainingExample-objs
+        # after training the tokenizer, use it to encode the text-training-examples into token IDs, gives list of EncoderDecoderTokenizedTrainingExample-objs
         tokenized_training_examples = self.tokenizer.encode_training_examples(text_training_examples)
 
-        return tokenized_training_examples
+        self.debug_step5_encoding(debug=debug, training_examples=tokenized_training_examples)
+
+        # ================ STEP 6: Construct model input and target sequences (model training examples) ================
+        model_training_examples = self.construct_model_sequences(tokenized_training_examples)
+
+        self.debug_step6(debug=debug, training_examples=model_training_examples)
+
+        return model_training_examples
 
 
 
-              
+    """
+    Step 6: Construct model input and target sequences example objs for encoder-decoder, given the tokenized training examples.
+    
+    Tokenized Example:
+        source_ids = [s1, s2, s3]
+        target_ids = [t1, t2, t3]
+    
+    Model Training Example:
+        encoder_input = [s1, s2, s3, EOS]
+        decoder_input = [BOS, t1, t2, t3]
+        decoder_target = [t1, t2, t3, EOS]
+    """
+    def construct_model_sequences(self, tokenized_training_examples: list[EncoderDecoderTokenizedTrainingExample]) -> list[EncoderDecoderModelTrainingExample]:
+
+        bos_token_id = self.tokenizer.get_special_token_id("<BOS>")     # get the beginning-of-sentence special-token-id
+        eos_token_id = self.tokenizer.get_special_token_id("<EOS>")     # get the end-of-sentence special-token-id
+
+        # stores the created model-training-example-objs
+        model_training_examples: list[ EncoderDecoderModelTrainingExample ] = []
+        
+        # for every tokenized-training-example-obj, construct the model sequences
+        for cur_tokenized_example in tokenized_training_examples:
+            # get the cur-tokenized-example source-token-ids and add EOS-token to the end of it
+            encoder_input_ids = cur_tokenized_example.source_token_ids + [eos_token_id]
+            # get the cur-tokenized-example target-token-ids and add BOS to the start of it
+            decoder_input_ids = [bos_token_id] + cur_tokenized_example.target_token_ids
+            # get the cur-tokenized-example  target-token-ids and add EOS to the end of it, this does the "one token shift", so the model is he model is trained to predict the next correct token.
+            decoder_target_ids = cur_tokenized_example.target_token_ids + [eos_token_id]
+
+            # create the model-training-example by combining all 3 sequences for encoder-deocder
+            cur_model_training_example = EncoderDecoderModelTrainingExample(encoder_input_ids=encoder_input_ids, decoder_input_ids=decoder_input_ids, decoder_target_ids=decoder_target_ids)
+
+            model_training_examples.append(cur_model_training_example)
+
+        return model_training_examples
+
+
 
 
 
@@ -103,78 +148,119 @@ class EncoderDecoderDatasetCreationPipeline:
         return tokenizer_corpus
 
 
+    # ============================== DEBUG HELPERS ==============================
+    def debug_step4(self, debug: bool, training_examples: list[EncoderDecoderModelTrainingExample]) -> None:
+        if not debug:
+            return
+
+        print("\n=============== STEP 4 ===============")
+        print("Created Text Training Examples")
+
+        for indx, training_example in enumerate(training_examples):
+
+            print(f"\nTraining Example {indx + 1}")
+            print(training_example)
+
+    
+    def debug_step5_tokenizer(self, debug: bool) -> None:
+        if not debug:
+            return
+
+        print("\n=============== STEP 5: TOKENIZER ===============")
+
+        print("\nVocabulary:")
+        print(self.tokenizer.get_vocabulary())
+
+        print("\nMerge Rules:")
+        print(self.tokenizer.get_merge_rules())
+
+        print("\nSpecial Token IDs:")
+        print(self.tokenizer.get_special_token_ids())
+
+        print("\nVocabulary Size:")
+        print(self.tokenizer.get_vocab_size())
+
+    def debug_step5_encoding(self, debug: bool, training_examples: list[EncoderDecoderTokenizedTrainingExample]) -> None:
+        if not debug:
+            return
+        print(
+            "\n=============== STEP 5: ENCODE TRAINING EXAMPLES ==============="
+        )
+        for indx, training_example in enumerate(training_examples):
+
+            print(f"\nTraining Example {indx + 1}")
+            print(training_example)
+
+    def debug_step6(self, debug: bool, training_examples: list[EncoderDecoderModelTrainingExample]) -> None:
+        if not debug:
+            return
+
+        print("\n=============== STEP 6: CONSTRUCT MODEL SEQUENCES ===============")
+        for indx, training_example in enumerate(training_examples):
+
+            print(f"\nTraining Example {indx + 1}")
+            print(training_example)
+
+    
+
+
 
 # run: python -m dataset.dataset_creation_pipeline, library/
 if __name__ == "__main__":
 
     print(
-        "------ Testing Encoder-Decoder Dataset Creation Pipeline ------"
+        "\n------ Testing Encoder-Decoder Dataset Creation Pipeline ------"
     )
 
     # ============================================================
     # TEST 1: PAIRED CORPUS
     # ============================================================
 
-    print("\n=============== TEST 1: PAIRED CORPUS ===============\n")
+    print(
+        "\n\n================ TEST 1: PAIRED CORPUS ================"
+    )
 
     paired_corpus = [
         ("hello", "help"),
         ("help", "helmet"),
     ]
 
+    print("\nOriginal Paired Corpus:")
+
+    for indx, pair in enumerate(paired_corpus):
+        source_text, target_text = pair
+
+        print(f"\nCorpus Item {indx + 1}")
+        print(f"Source: {source_text}")
+        print(f"Target: {target_text}")
+
+    # create pipeline
     paired_pipeline = EncoderDecoderDatasetCreationPipeline(
         target_vocab_size=10,
     )
 
-    paired_tokenized_examples = (
-        paired_pipeline.create_dataset(
-            paired_corpus
-        )
+    # run entire dataset pipeline so far
+    paired_dataset = paired_pipeline.create_dataset(
+        corpus=paired_corpus,
+        debug=True,
     )
 
-    print("Original paired corpus:")
+    # final output of the pipeline so far
+    print(
+        "\n=============== FINAL PAIRED DATASET OUTPUT ==============="
+    )
 
-    for source, target in paired_corpus:
-        print(f"Source: {source}")
-        print(f"Target: {target}")
-        print()
-
-    print("Tokenized training examples:")
-
-    for indx, example in enumerate(
-        paired_tokenized_examples
-    ):
+    for indx, training_example in enumerate(paired_dataset):
         print(f"\nTraining Example {indx + 1}")
+        print(training_example)
 
-        print("Source Token IDs:")
-        print(example.source_token_ids)
-
-        print("Target Token IDs:")
-        print(example.target_token_ids)
-
-    print("\nNumber of original pairs:")
-    print(len(paired_corpus))
-
-    print("\nNumber of tokenized training examples:")
-    print(len(paired_tokenized_examples))
-
-    print("\nOne training example per pair:")
-    print(
-        len(paired_corpus)
-        == len(paired_tokenized_examples)
-    )
-
-    print("\nTokenizer vocabulary:")
-    print(
-        paired_pipeline.tokenizer.get_vocabulary()
-    )
 
     # ============================================================
     # TEST 2: UNPAIRED CORPUS
     # ============================================================
 
     print(
-        "\n=============== TEST 2: UNPAIRED CORPUS ===============\n"
+        "\n\n================ TEST 2: UNPAIRED CORPUS ================"
     )
 
     unpaired_corpus = [
@@ -183,56 +269,31 @@ if __name__ == "__main__":
         "hello",
     ]
 
+    print("\nOriginal Unpaired Corpus:")
+
+    for indx, text in enumerate(unpaired_corpus):
+        print(f"\nCorpus Item {indx + 1}")
+        print(text)
+
+    # create a new pipeline
+    # training_objective=None means use default denoising autoencoding
     unpaired_pipeline = EncoderDecoderDatasetCreationPipeline(
         target_vocab_size=30,
+        training_objective=None,
         random_seed=42,
     )
 
-    unpaired_tokenized_examples = (
-        unpaired_pipeline.create_dataset(
-            unpaired_corpus
-        )
+    # run entire dataset pipeline so far
+    unpaired_dataset = unpaired_pipeline.create_dataset(
+        corpus=unpaired_corpus,
+        debug=True,
     )
 
-    print("Original unpaired corpus:")
+    # final output of the pipeline so far
+    print(
+        "\n=============== FINAL UNPAIRED DATASET OUTPUT ==============="
+    )
 
-    for text in unpaired_corpus:
-        print(text)
-
-    print("\nTokenized training examples:")
-
-    for indx, example in enumerate(
-        unpaired_tokenized_examples
-    ):
+    for indx, training_example in enumerate(unpaired_dataset):
         print(f"\nTraining Example {indx + 1}")
-
-        print("Source Token IDs:")
-        print(example.source_token_ids)
-
-        print("Target Token IDs:")
-        print(example.target_token_ids)
-
-    print("\nNumber of corpus items:")
-    print(len(unpaired_corpus))
-
-    print("\nNumber of tokenized training examples:")
-    print(len(unpaired_tokenized_examples))
-
-    print("\nOne denoising example per corpus item:")
-    print(
-        len(unpaired_corpus)
-        == len(unpaired_tokenized_examples)
-    )
-
-    print("\nTokenizer vocabulary size:")
-    print(
-        unpaired_pipeline.tokenizer.get_vocab_size()
-    )
-
-
-        
-
-
-
-
-
+        print(training_example)

@@ -25,11 +25,49 @@ class EncoderDecoderTextTrainingExample:
         if not self.target_text.strip():
             raise ValueError("target_text cannot be empty.")
 
+    def __repr__(self) -> str:      # for printing debug statementss
+        return (
+            "EncoderDecoderTextTrainingExample(\n"
+            f"  source_text={self.source_text!r},\n"
+            f"  target_text={self.target_text!r}\n"
+            ")"
+        )
+
 """
 Represents a tokenized training example for encoder-decoder model. 
-Has a source-sequence of token ids & target-sequence of token ids. (the tokenizer is used to encode EncoderDecoderTextTrainingExample)
+Has a source-sequence of token ids & target-sequence of token ids. (the tokenizer is used to encode EncoderDecoderTextTrainingExample). Step 5.
 """
 @dataclass
 class EncoderDecoderTokenizedTrainingExample:
     source_token_ids: list[int]
     target_token_ids: list[int]
+
+    def __repr__(self) -> str:      # for printing debug statements
+        return (
+            "EncoderDecoderTokenizedTrainingExample(\n"
+            f"  source_token_ids={self.source_token_ids},\n"
+            f"  target_token_ids={self.target_token_ids}\n"
+            ")"
+        )
+
+"""
+Represents one encoder-decoder training example format expected by the model created at step 6.
+"""
+@dataclass
+class EncoderDecoderModelTrainingExample:
+
+    encoder_input_ids: list[int]            # token-ids fed into the encoder
+
+    decoder_input_ids: list[int]            # token-ids fed into the decoder
+
+    decoder_target_ids: list[int]           # the correct token IDs the decoder should predict
+
+
+    def __repr__(self) -> str:      # for printing debug statements            
+        return (
+            "EncoderDecoderModelTrainingExample(\n"
+            f"  encoder_input_ids={self.encoder_input_ids},\n"
+            f"  decoder_input_ids={self.decoder_input_ids},\n"
+            f"  decoder_target_ids={self.decoder_target_ids}\n"
+            ")"
+        )
