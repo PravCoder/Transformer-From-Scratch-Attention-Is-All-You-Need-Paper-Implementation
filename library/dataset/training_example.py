@@ -56,18 +56,23 @@ Represents one encoder-decoder training example format expected by the model cre
 @dataclass
 class EncoderDecoderModelTrainingExample:
 
-    encoder_input_ids: list[int]            # token-ids fed into the encoder
+    encoder_input_ids: list[int]            # token-ids fed into the encoder, structure of this sequence: [s1, s2, s3, EOS]
 
-    decoder_input_ids: list[int]            # token-ids fed into the decoder
+    decoder_input_ids: list[int]            # token-ids fed into the decoder, structure of this sequence: [BOS, t1, t2, t3]
 
-    decoder_target_ids: list[int]           # the correct token IDs the decoder should predict
+    decoder_target_ids: list[int]           # the correct token IDs the decoder should predict, structure of this sequence: [t1, t2, t3, EOS]
 
 
-    def __repr__(self) -> str:      # for printing debug statements            
+    encoder_padding_mask: list[int] | None = None         # binary padding mask used to mask/ignore <PAD> tokens in encoder_input_ids, 1 = real-token, & 0 = padding token
+    decoder_padding_mask: list[int] | None = None         # binary padding mask used to mask/ignore <PAD> tokens in decoder_input_ids, 1 = real-token, & 0 = padding token
+
+    def __repr__(self) -> str:      # for printing debug statements   
         return (
             "EncoderDecoderModelTrainingExample(\n"
             f"  encoder_input_ids={self.encoder_input_ids},\n"
             f"  decoder_input_ids={self.decoder_input_ids},\n"
-            f"  decoder_target_ids={self.decoder_target_ids}\n"
+            f"  decoder_target_ids={self.decoder_target_ids},\n"
+            f"  encoder_padding_mask={self.encoder_padding_mask},\n"
+            f"  decoder_padding_mask={self.decoder_padding_mask},\n"
             ")"
         )
