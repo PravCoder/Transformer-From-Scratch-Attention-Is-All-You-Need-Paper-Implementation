@@ -17,11 +17,14 @@ Step 6:
 
 Step 7:
     Pad or truncate Sequences and Create Masks
-        Part 1:
-        Part 2:
-        Part 3:
-        Part 4:
-        Part 5: 
+        Part 1: Choose Maximum Sequence Lengths
+        Part 2: Truncate Sequences that are too long
+        Part 3: Pad Sequences that are too short
+        Part 4: Create Padding Masks
+        Part 5: Create Causal Mask
+
+Step 7:
+    Batch the Examples
 """
 
 from collections.abc import Iterable
@@ -30,11 +33,11 @@ from tokenization.special_tokens import TransformerArchitecture
 from dataset.paired_example_builder import PairedTextTrainingExampleBuilder
 from dataset.unpaired_example_builder import UnpairedTextTrainingExampleBuilder
 from dataset.objectives.base import UnpairedTextTrainingObjectiveBase
-from dataset.training_example import EncoderDecoderTextTrainingExample, EncoderDecoderTokenizedTrainingExample , EncoderDecoderModelTrainingExample
+from dataset.training_example import EncoderDecoderTextTrainingExample, EncoderDecoderTokenizedTrainingExample , EncoderDecoderModelTrainingExample, EncoderDecoderTrainingBatch
 
 class EncoderDecoderDatasetCreationPipeline:
 
-    def __init__(self, target_vocab_size: int, max_encoder_length: int, max_decoder_length: int, training_objective: UnpairedTextTrainingObjectiveBase | None = None, random_seed: int | None = 42) -> None:
+    def __init__(self, target_vocab_size: int, max_encoder_length: int, max_decoder_length: int, batch_size: int, training_objective: UnpairedTextTrainingObjectiveBase | None = None, random_seed: int | None = 42) -> None:
 
         self.target_vocab_size = target_vocab_size          # the size of the vocabulary you want to reach when training tokenizer
         self.training_objective = training_objective        # defines how text examples are created from unpaired-corpus
@@ -42,6 +45,8 @@ class EncoderDecoderDatasetCreationPipeline:
 
         self.max_encoder_length = max_encoder_length        # the max length each encoder sequence must be
         self.max_decoder_length = max_decoder_length        # the max length each deocder sequence must be
+
+        self.batch_size = batch_size                        # the number of training-examples each batch should have
 
         # create causal mask which is 2D lower triangular matrix, because it only depends on max decoder, so only create it once. 
         self.decoder_causal_mask = self.create_causal_mask(self.max_decoder_length)  # this is shared across all examples  because it only depends on decoder sequence max length, which is constant across all examples
@@ -105,6 +110,12 @@ class EncoderDecoderDatasetCreationPipeline:
         model_training_examples = self.pad_truncate_and_create_masks(model_training_examples)
 
         self.step7_debug(debug=debug,training_examples=model_training_examples)
+
+        # ================ STEP 8: Batch the Examples ================
+        training_batches = self.batch_training_examples(model_training_examples)        # returns list of training-batch-objs
+        self.step8_debug(debug=debug,training_batches=training_batches)
+
+
 
         return model_training_examples
 
@@ -272,7 +283,66 @@ class EncoderDecoderDatasetCreationPipeline:
                 padding_mask.append(1)
 
         return padding_mask
-        
+
+    """
+    Step-8: Batch the Examples
+    Args:
+        training_examples: takes in the list of EncoderDecoderModelTrainingExample-objs
+    Outputs batch-objs
+    """
+    def batch_training_examples(self, training_examples: list[EncoderDecoderModelTrainingExample]) -> list[EncoderDecoderTrainingBatch]:
+        # stores all training-batch-objs
+        training_batches: list[ EncoderDecoderTrainingBatch ] = []
+
+        # move through the dataset batch_size examples at a time, batch_start_indx is when the current batch start its index in the model-training-objs list
+        for batch_start_indx in range(0, len(training_examples), self.batch_size):
+
+            # the batch-end-indx where the batch ends is where the batch-starts plug the batch-size
+            batch_end_indx = batch_start_indx + self.batch_size
+
+            # all of the model-training-examples-objs in our current batch is from the batch'es start-indx to its end-indx
+            cur_batch_examples = training_examples[batch_start_indx: batch_end_indx]
+
+            # define all the attributes of a single model-training-obj then we stack them
+            # stack encoder input sequences
+            batch_encoder_input_ids = []
+
+            # stack decoder input sequences
+            batch_decoder_input_ids = []
+
+            # stack decoder target sequences
+            batch_decoder_target_ids = []
+
+            # stack encoder padding masks
+            batch_encoder_padding_masks = []
+
+            # stack decoder padding masks
+            batch_decoder_padding_masks = []
+
+            # iterate every example in our current batch, and at every one of its attribute to into batched-attribute
+            for training_example in cur_batch_examples:
+                batch_encoder_input_ids.append(training_example.encoder_input_ids)
+
+                batch_decoder_input_ids.append(training_example.decoder_input_ids)
+
+                batch_decoder_target_ids.append(training_example.decoder_target_ids)
+
+                batch_encoder_padding_masks.append(training_example.encoder_padding_mask)
+
+                batch_decoder_padding_masks.append(training_example.decoder_padding_mask)
+
+            # after stacking all attribute create trainin-batch-obj
+            training_batch = EncoderDecoderTrainingBatch(
+                encoder_input_ids=batch_encoder_input_ids,
+                decoder_input_ids=batch_decoder_input_ids,
+                decoder_target_ids=batch_decoder_target_ids,
+                encoder_padding_mask=batch_encoder_padding_masks,
+                decoder_padding_mask=batch_decoder_padding_masks,
+            )
+
+            training_batches.append(training_batch)
+
+        return training_batches
 
 
     """
@@ -378,20 +448,18 @@ class EncoderDecoderDatasetCreationPipeline:
         for indx, training_example in enumerate(training_examples):
             print(f"\nTraining Example {indx + 1}")
 
-            print("Encoder Input IDs:")
-            print(training_example.encoder_input_ids)
+            print(training_example)
 
-            print("Encoder Padding Mask:")
-            print(training_example.encoder_padding_mask)
+    def step8_debug(self, debug: bool, training_batches: list[EncoderDecoderTrainingBatch]) -> None:
+        if not debug:
+            return
 
-            print("\nDecoder Input IDs:")
-            print(training_example.decoder_input_ids)
+        print("\n=============== STEP 8: BATCH TRAINING EXAMPLES ===============")
+        for indx, training_batch in enumerate(training_batches):
 
-            print("Decoder Padding Mask:")
-            print(training_example.decoder_padding_mask)
+            print(f"\nTraining Batch {indx + 1}")
 
-            print("\nDecoder Target IDs:")
-            print(training_example.decoder_target_ids)
+            print(training_batch)
 
     
 
@@ -431,6 +499,7 @@ if __name__ == "__main__":
         target_vocab_size=10,
         max_encoder_length=6,
         max_decoder_length=6,
+        batch_size=2,
     )
 
     print("\nMax Encoder Length:")
@@ -443,20 +512,15 @@ if __name__ == "__main__":
     columns = len(paired_pipeline.decoder_causal_mask[0])
     print(f"{rows} x {columns}")
 
+    print("\nBatch size:")
+    print(paired_pipeline.batch_size)
+
     # run entire dataset pipeline so far
     paired_dataset = paired_pipeline.create_dataset(
         corpus=paired_corpus,
         debug=True,
     )
 
-    # final output of the pipeline so far
-    print(
-        "\n=============== FINAL PAIRED DATASET OUTPUT ==============="
-    )
-
-    for indx, training_example in enumerate(paired_dataset):
-        print(f"\nTraining Example {indx + 1}")
-        print(training_example)
 
 
     # ============================================================
@@ -484,6 +548,7 @@ if __name__ == "__main__":
         target_vocab_size=30,
         max_encoder_length=10,
         max_decoder_length=10,
+        batch_size=2,
         training_objective=None,
         random_seed=42,
     )
@@ -497,17 +562,12 @@ if __name__ == "__main__":
     columns = len(unpaired_pipeline.decoder_causal_mask[0])
     print(f"{rows} x {columns}")
 
+    print("\nBatch size:")
+    print(unpaired_pipeline.batch_size)
+
     # run entire dataset pipeline so far
     unpaired_dataset = unpaired_pipeline.create_dataset(
         corpus=unpaired_corpus,
         debug=True,
     )
 
-    # final output of the pipeline so far
-    print(
-        "\n=============== FINAL UNPAIRED DATASET OUTPUT ==============="
-    )
-
-    for indx, training_example in enumerate(unpaired_dataset):
-        print(f"\nTraining Example {indx + 1}")
-        print(training_example)

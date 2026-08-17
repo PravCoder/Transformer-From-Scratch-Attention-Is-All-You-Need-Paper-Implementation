@@ -56,15 +56,15 @@ Represents one encoder-decoder training example format expected by the model cre
 @dataclass
 class EncoderDecoderModelTrainingExample:
 
-    encoder_input_ids: list[int]            # token-ids fed into the encoder, structure of this sequence: [s1, s2, s3, EOS]
+    encoder_input_ids: list[int]            # token-ids fed into the encoder, structure of this sequence: [s1, s2, s3, EOS], length max_encoder_length after step 7
 
-    decoder_input_ids: list[int]            # token-ids fed into the decoder, structure of this sequence: [BOS, t1, t2, t3]
+    decoder_input_ids: list[int]            # token-ids fed into the decoder, structure of this sequence: [BOS, t1, t2, t3], length max_decoder_length after step 7
 
     decoder_target_ids: list[int]           # the correct token IDs the decoder should predict, structure of this sequence: [t1, t2, t3, EOS]
 
 
-    encoder_padding_mask: list[int] | None = None         # binary padding mask used to mask/ignore <PAD> tokens in encoder_input_ids, 1 = real-token, & 0 = padding token
-    decoder_padding_mask: list[int] | None = None         # binary padding mask used to mask/ignore <PAD> tokens in decoder_input_ids, 1 = real-token, & 0 = padding token
+    encoder_padding_mask: list[int] | None = None         # binary padding mask used to mask/ignore <PAD> tokens in encoder_input_ids, 1 = real-token, & 0 = padding token, length max_encoder_length after step 7
+    decoder_padding_mask: list[int] | None = None         # binary padding mask used to mask/ignore <PAD> tokens in decoder_input_ids, 1 = real-token, & 0 = padding token, length max_decoder_length after step 7
 
     def __repr__(self) -> str:      # for printing debug statements   
         return (
@@ -74,5 +74,39 @@ class EncoderDecoderModelTrainingExample:
             f"  decoder_target_ids={self.decoder_target_ids},\n"
             f"  encoder_padding_mask={self.encoder_padding_mask},\n"
             f"  decoder_padding_mask={self.decoder_padding_mask},\n"
+            ")"
+        )
+
+
+"""
+Represents a single training-batch-obj for a encoder-decoder of size batch_size. Its attributes are the attributes of every single training-example. 
+Here we just stack each example's attribute 1D sequences. Understand class above.
+"""
+@dataclass
+class EncoderDecoderTrainingBatch:
+
+    # shape: [batch_size, max_encoder_length], stack every training-example's encoder_input_ids attribute
+    encoder_input_ids: list[list[int]]
+
+    # shape: [batch_size, max_decoder_length], stack every training-example's decoder_input_ids attriibute
+    decoder_input_ids: list[list[int]]
+
+    # shape: [batch_size, max_decoder_length], stack every training-example's decoder_target_ids attribute
+    decoder_target_ids: list[list[int]]
+
+    # shape: [batch_size, max_encoder_length], stack every training-example's encoder_padding_mask attribute
+    encoder_padding_mask: list[list[int]]
+
+    # shape: [batch_size, max_decoder_length], stack every training-example's decoder_padding_mask attribute
+    decoder_padding_mask: list[list[int]]
+
+    def __repr__(self) -> str:      # for printing debug statements
+        return (
+            "EncoderDecoderTrainingBatch(\n"
+            f"  encoder_input_ids={self.encoder_input_ids},\n"
+            f"  decoder_input_ids={self.decoder_input_ids},\n"
+            f"  decoder_target_ids={self.decoder_target_ids},\n"
+            f"  encoder_padding_mask={self.encoder_padding_mask},\n"
+            f"  decoder_padding_mask={self.decoder_padding_mask}\n"
             ")"
         )
