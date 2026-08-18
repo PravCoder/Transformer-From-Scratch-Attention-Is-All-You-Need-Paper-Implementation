@@ -23,11 +23,15 @@ Step 7:
         Part 4: Create Padding Masks
         Part 5: Create Causal Mask
 
-Step 7:
+Step 8:
     Batch the Examples
+
+Step 9:
+    Convert batches into tensor and prepare model inputs
 """
 
 from collections.abc import Iterable
+import torch
 from tokenization.tokenizer import BPETokenizer
 from tokenization.special_tokens import TransformerArchitecture
 from dataset.paired_example_builder import PairedTextTrainingExampleBuilder
@@ -37,11 +41,12 @@ from dataset.training_example import EncoderDecoderTextTrainingExample, EncoderD
 
 class EncoderDecoderDatasetCreationPipeline:
 
-    def __init__(self, target_vocab_size: int, max_encoder_length: int, max_decoder_length: int, batch_size: int, training_objective: UnpairedTextTrainingObjectiveBase | None = None, random_seed: int | None = 42) -> None:
+    def __init__(self, target_vocab_size: int, max_encoder_length: int, max_decoder_length: int, batch_size: int, device: str = "cpu", training_objective: UnpairedTextTrainingObjectiveBase | None = None, random_seed: int | None = 42) -> None:
 
         self.target_vocab_size = target_vocab_size          # the size of the vocabulary you want to reach when training tokenizer
         self.training_objective = training_objective        # defines how text examples are created from unpaired-corpus
         self.random_seed = random_seed
+        self.device = device
 
         self.max_encoder_length = max_encoder_length        # the max length each encoder sequence must be
         self.max_decoder_length = max_decoder_length        # the max length each deocder sequence must be
@@ -115,6 +120,12 @@ class EncoderDecoderDatasetCreationPipeline:
         training_batches = self.batch_training_examples(model_training_examples)        # returns list of training-batch-objs
         self.step8_debug(debug=debug,training_batches=training_batches)
 
+        # ================ STEP 9: Convert Batch to Tensors and prepare model inputs ================
+        training_batches = self.convert_batches_to_tensors(training_batches)
+        # covnert shared var to tensor as well
+        self.decoder_causal_mask = torch.tensor(self.decoder_causal_mask, dtype=torch.bool, device=self.device)
+
+        self.step9_debug(debug=debug,tensor_batches=training_batches)
 
 
         return model_training_examples
@@ -285,6 +296,25 @@ class EncoderDecoderDatasetCreationPipeline:
         return padding_mask
 
     """
+        Step-7 Part-5: Given the decoder max sequence length it creates the causal mask which is a 2D lower triangular square matrix.
+    """
+    def create_causal_mask(self, max_sequence_legnth: int) -> list[list[int]]:
+
+        causal_mask = []
+
+        for row in range(max_sequence_legnth):
+            mask_row = []
+
+            for column in range(max_sequence_legnth):
+                if column <= row:
+                    mask_row.append(1)
+                else:
+                    mask_row.append(0)
+            causal_mask.append(mask_row)
+
+        return causal_mask
+
+    """
     Step-8: Batch the Examples
     Args:
         training_examples: takes in the list of EncoderDecoderModelTrainingExample-objs
@@ -344,26 +374,25 @@ class EncoderDecoderDatasetCreationPipeline:
 
         return training_batches
 
-
     """
-    Step-7 Part-5: Given the decoder max sequence length it creates the causal mask which is a 2D lower triangular square matrix.
+    Step 9: Convert batches to tensors and prepare model inputs
     """
-    def create_causal_mask(self, max_sequence_legnth: int) -> list[list[int]]:
+    def convert_batches_to_tensors(self, training_batches: list[EncoderDecoderTrainingBatch]) -> list[EncoderDecoderTrainingBatch]:
+        # iterate all training-batch-objs created, just convert each attribute in it to a tensor
+        for cur_training_batch in training_batches:
 
-        causal_mask = []
+            cur_training_batch.encoder_input_ids = torch.tensor(cur_training_batch.encoder_input_ids,dtype=torch.long,device=self.device)
 
-        for row in range(max_sequence_legnth):
-            mask_row = []
+            cur_training_batch.decoder_input_ids = torch.tensor(cur_training_batch.decoder_input_ids,dtype=torch.long,device=self.device,)
 
-            for column in range(max_sequence_legnth):
-                if column <= row:
-                    mask_row.append(1)
-                else:
-                    mask_row.append(0)
-            causal_mask.append(mask_row)
+            cur_training_batch.decoder_target_ids = torch.tensor(cur_training_batch.decoder_target_ids,dtype=torch.long,device=self.device,)
 
-        return causal_mask
+            cur_training_batch.encoder_padding_mask =  torch.tensor(cur_training_batch.encoder_padding_mask,dtype=torch.bool,device=self.device,)
 
+            cur_training_batch.decoder_padding_mask =  torch.tensor(cur_training_batch.decoder_padding_mask,dtype=torch.bool,device=self.device,)
+
+
+        return training_batches
 
 
 
@@ -461,7 +490,14 @@ class EncoderDecoderDatasetCreationPipeline:
 
             print(training_batch)
 
-    
+    def step9_debug(self, debug: bool, tensor_batches: list[EncoderDecoderTrainingBatch]) -> None:
+        if not debug:
+            return
+        print("\n=============== STEP 9: CONVERT BATCHES TO TENSORS ===============")
+
+        for indx, tensor_batch in enumerate(tensor_batches):
+            print(tensor_batch)     # note torch may convert some 1/0 ints to true/false that is just how it displays and it makes computation easier
+            
 
 
 

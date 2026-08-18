@@ -4,7 +4,8 @@ FILE: defines the raw-text training-example output produced by step 4.
 For an encoder-decoder-transformer one raw training example contains a source text sequence and a target text sequence
 """ 
 from dataclasses import dataclass
-
+import torch
+import numpy
 
 """
 Each encoder-decoder models training example has a source-text & target-text. This is for step 4.
@@ -86,19 +87,19 @@ Here we just stack each example's attribute 1D sequences. Understand class above
 class EncoderDecoderTrainingBatch:
 
     # shape: [batch_size, max_encoder_length], stack every training-example's encoder_input_ids attribute
-    encoder_input_ids: list[list[int]]
+    encoder_input_ids: list[list[int]] | torch.Tensor
 
     # shape: [batch_size, max_decoder_length], stack every training-example's decoder_input_ids attriibute
-    decoder_input_ids: list[list[int]]
+    decoder_input_ids: list[list[int]] | torch.Tensor
 
     # shape: [batch_size, max_decoder_length], stack every training-example's decoder_target_ids attribute
-    decoder_target_ids: list[list[int]]
+    decoder_target_ids: list[list[int]] | torch.Tensor
 
     # shape: [batch_size, max_encoder_length], stack every training-example's encoder_padding_mask attribute
-    encoder_padding_mask: list[list[int]]
+    encoder_padding_mask: list[list[int]] | torch.Tensor
 
     # shape: [batch_size, max_decoder_length], stack every training-example's decoder_padding_mask attribute
-    decoder_padding_mask: list[list[int]]
+    decoder_padding_mask: list[list[int]] | torch.Tensor
 
     def __repr__(self) -> str:      # for printing debug statements
         return (
